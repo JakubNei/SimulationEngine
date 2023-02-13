@@ -1,0 +1,16 @@
+{
+    "name": "ShaderMetadataGenerator",
+    "rootNamespace": "",
+    "references": [
+        "GUID:6bed9abcbd74e694e84c216a6e8165ed"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

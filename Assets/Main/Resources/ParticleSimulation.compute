@@ -1,0 +1,45 @@
+#pragma once
+
+
+RWStructuredBuffer<float3> AllParticles_Position;
+RWStructuredBuffer<float3> AllParticles_Velocity;
+int AllParticles_Length;
+
+
+
+RWTexture2D<LIGHT_ADJUSTMENT_DATA_PACKED> LigthAdjustment;
+#pragma kernel UpdateLightAdjustment_Finish
+[numthreads(8, 8, 1)]
+void UpdateLightAdjustment_Finish(uint3 id : SV_DispatchThreadID)
+{
+	if (any(id.xy >= CellGridSize.xy)) return;
+	int particleIndex = FirstParticleInCell[id.y * CellGridSize.x + id.x];
+	if (particleIndex == 0) return;
+
+	int materialId = AllParticles_MaterialId[particleIndex];
+	float3 lightSource = GetMaterialLightSource(materialId);
+	float3 translucency = GetMaterialTranslucency(materialId);
+	bool materialIsLightBlocker = MaterialIsLightBlocker(materialId);
+
+	LigthAdjustmentDataStruct ligthAdjustmentData;
+
+	if (any(lightSource))
+	{
+		ligthAdjustmentData.Color = lightSource;
+		ligthAdjustmentData.IsLightSource = true;
+		ligthAdjustmentData.IsLightBlocker = true;
+	}
+	else
+	{
+		ligthAdjustmentData.Color = translucency;
+		ligthAdjustmentData.IsLightSource = false;
+		ligthAdjustmentData.IsLightBlocker = materialIsLightBlocker;
+	}
+
+	// DEBUG
+	//ligthAdjustmentData.Color = float3(1, 0, 1);
+	//ligthAdjustmentData.IsLightSource = true;
+	//ligthAdjustmentData.IsLightBlocker = true;
+
+	LigthAdjustment[GetPositionInAtlas(CellGridStartInclusive.xy + id.xy)] = PackLigthAdjustmentData(ligthAdjustmentData);
+}

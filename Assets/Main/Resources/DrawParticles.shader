@@ -50,6 +50,13 @@ Shader "Unlit/DrawParticles"
 			float4 col;
 		};
 
+		float3 HUEToRGB(float H)
+		{
+			float R = abs(H * 6 - 3) - 1;
+			float G = 2 - abs(H * 6 - 2);
+			float B = 2 - abs(H * 6 - 4);
+			return saturate(float3(R, G, B));
+		}
 
 		void my_vert(inout appdata_id v, out Input o)
 		{
@@ -64,7 +71,9 @@ Shader "Unlit/DrawParticles"
 			#endif
 
 			v.vertex.xyz = vertexPos;
-			o.col = float4(1,1,1,1);
+
+			float3 c = HUEToRGB(v.instanceID/(float)AllParticles_Length);
+			o.col = float4(c,1);
 		}
 
 		void my_surf(Input IN, inout SurfaceOutputStandard o) 

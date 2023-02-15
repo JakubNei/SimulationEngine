@@ -1,45 +1,57 @@
-#pragma once
-
-
 RWStructuredBuffer<float3> AllParticles_Position;
 RWStructuredBuffer<float3> AllParticles_Velocity;
 int AllParticles_Length;
 
+float VoxelCellEdgeSize;
 
-
-RWTexture2D<LIGHT_ADJUSTMENT_DATA_PACKED> LigthAdjustment;
-#pragma kernel UpdateLightAdjustment_Finish
-[numthreads(8, 8, 1)]
-void UpdateLightAdjustment_Finish(uint3 id : SV_DispatchThreadID)
+int GetHashCode(float3 position)
 {
-	if (any(id.xy >= CellGridSize.xy)) return;
-	int particleIndex = FirstParticleInCell[id.y * CellGridSize.x + id.x];
-	if (particleIndex == 0) return;
-
-	int materialId = AllParticles_MaterialId[particleIndex];
-	float3 lightSource = GetMaterialLightSource(materialId);
-	float3 translucency = GetMaterialTranslucency(materialId);
-	bool materialIsLightBlocker = MaterialIsLightBlocker(materialId);
-
-	LigthAdjustmentDataStruct ligthAdjustmentData;
-
-	if (any(lightSource))
-	{
-		ligthAdjustmentData.Color = lightSource;
-		ligthAdjustmentData.IsLightSource = true;
-		ligthAdjustmentData.IsLightBlocker = true;
-	}
-	else
-	{
-		ligthAdjustmentData.Color = translucency;
-		ligthAdjustmentData.IsLightSource = false;
-		ligthAdjustmentData.IsLightBlocker = materialIsLightBlocker;
-	}
-
-	// DEBUG
-	//ligthAdjustmentData.Color = float3(1, 0, 1);
-	//ligthAdjustmentData.IsLightSource = true;
-	//ligthAdjustmentData.IsLightBlocker = true;
-
-	LigthAdjustment[GetPositionInAtlas(CellGridStartInclusive.xy + id.xy)] = PackLigthAdjustmentData(ligthAdjustmentData);
+    int3 p = round(position / VoxelCellEdgeSize);
+    //return p.x ^ p.y ^ p.z;
+    return p.y;
 }
+
+
+
+uint ComparisonOffset;
+uint DirectionChangeStride;
+
+// help from https://github.com/hiroakioishi/UnityGPUBitonicSort/blob/master/GPUBitonicSort/Assets/BitonicSortCS/BitonicSort.compute
+// explained at https://en.wikipedia.org/wiki/Bitonic_sorter and  https://www.geeksforgeeks.org/bitonic-sort/
+#pragma kernel BitonicSort
+[numthreads(64, 1, 1)]
+void BitonicSort(uint3 id : SV_DispatchThreadID)
+{
+    int index0 = (id.x & (ComparisonOffset-1)) + (id.x & ~(ComparisonOffset-1)) >> 1;
+	int index1 = index0 + ComparisonOffset;
+
+    int key0 = GetHashCode(AllParticles_Position[index0]);
+    int key1 = GetHashCode(AllParticles_Position[index1]);
+
+    bool shouldSwap = (key0 <= key1) == (bool)(DirectionChangeStride & index0);
+
+    if (shouldSwap)
+    {
+        float3 temp = AllParticles_Position[key0];
+        AllParticles_Position[key0] = AllParticles_Position[key1];
+        AllParticles_Position[key1] = temp;
+
+        temp = AllParticles_Velocity[key0];
+        AllParticles_Velocity[key0] = AllParticles_Velocity[key1];
+        AllParticles_Velocity[key1] = temp;
+    }
+}
+
+
+
+float DeltaTime;
+
+#pragma kernel Simulate
+[numthreads(64, 1, 1)]
+void Simulate(uint3 id : SV_DispatchThreadID)
+{
+    AllParticles_Position[id.x] = AllParticles_Position[id.x] + AllParticles_Velocity[id.x] * DeltaTime;
+    //AllParticles_Position[id.x] = AllParticles_Position[id.x] + float3(0.1, 1, 1);
+}
+
+

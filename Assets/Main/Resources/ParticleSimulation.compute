@@ -7,8 +7,8 @@ float VoxelCellEdgeSize;
 int GetHashCode(float3 position)
 {
     int3 p = round(position / VoxelCellEdgeSize);
-    //return p.x ^ p.y ^ p.z;
-    return p.y;
+    return p.x ^ p.y ^ p.z;
+    //return p.y;
 }
 
 
@@ -30,18 +30,13 @@ void BitonicSort(uint3 id : SV_DispatchThreadID)
 
 	//uint result = ((shared_data[id.x & ~ComparisonOffset] <= shared_data[id.x | ComparisonOffset]) == (bool)(DirectionChangeStride & id.x)) ? shared_data[id.x ^ ComparisonOffset] : shared_data[id.x];
 
-    int index0 = id.x & ~ComparisonOffset;
-	int index1 = id.x | ComparisonOffset;    
-    if (index0 > id.x) return;
+    int index0 = id.x & ~ComparisonOffset; // index top
+	int index1 = id.x | ComparisonOffset; // index bottom
+    if (index1 == id.x) return;
     
     int key0 = GetHashCode(AllParticles_Position[index0].xyz);
     int key1 = GetHashCode(AllParticles_Position[index1].xyz);
     bool shouldSwap = (key0 <= key1) == (bool)(DirectionChangeStride & index0);
-
-
-    // debug
-    //index0 = id.x * 2;
-    //index1 = index0 + GetHashCode(AllParticles_Position[index0]) % (AllParticles_Length /2 );
 
     if (shouldSwap)
     {
@@ -63,7 +58,7 @@ float DeltaTime;
 [numthreads(64, 1, 1)]
 void Simulate(uint3 id : SV_DispatchThreadID)
 {
-    //AllParticles_Position[id.x] = AllParticles_Position[id.x] + AllParticles_Velocity[id.x] * DeltaTime;
+    AllParticles_Position[id.x] = AllParticles_Position[id.x] + AllParticles_Velocity[id.x] * DeltaTime;
     //AllParticles_Position[id.x] = AllParticles_Position[id.x] + float3(0.1, 1, 1);
 }
 

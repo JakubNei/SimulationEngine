@@ -42,7 +42,6 @@ public class Main : MonoBehaviour
 			for (int x = 0; i < Gpu_AllParticles_Length && x < countOnEdge; x++)
 				for (int y = 0; i < Gpu_AllParticles_Length && y < countOnEdge; y++)
 					for (int z = 0; i < Gpu_AllParticles_Length && z < countOnEdge; z++)
-					//for (int i = 0; i < Gpu_AllParticles_Length; i++)
 					{
 						var xRatio = x / (float)countOnEdge;
 						var yRatio = y / (float)countOnEdge;

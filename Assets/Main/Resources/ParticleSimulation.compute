@@ -1,5 +1,5 @@
-RWStructuredBuffer<float3> AllParticles_Position;
-RWStructuredBuffer<float3> AllParticles_Velocity;
+RWStructuredBuffer<float4> AllParticles_Position;
+RWStructuredBuffer<float4> AllParticles_Velocity;
 int AllParticles_Length;
 
 float VoxelCellEdgeSize;
@@ -22,23 +22,36 @@ uint DirectionChangeStride;
 [numthreads(64, 1, 1)]
 void BitonicSort(uint3 id : SV_DispatchThreadID)
 {
-    int index0 = (id.x & (ComparisonOffset-1)) + (id.x & ~(ComparisonOffset-1)) >> 1;
-	int index1 = index0 + ComparisonOffset;
+    // int index0 = (id.x & (ComparisonOffset-1)) + (id.x & ~(ComparisonOffset-1)) << 1;
+	// int index1 = index0 + ComparisonOffset;    
+    // int key0 = GetHashCode(AllParticles_Position[index0]);
+    // int key1 = GetHashCode(AllParticles_Position[index1]);
+    // bool shouldSwap = (key0 <= key1) == (bool)(DirectionChangeStride & index0);
 
-    int key0 = GetHashCode(AllParticles_Position[index0]);
-    int key1 = GetHashCode(AllParticles_Position[index1]);
+	//uint result = ((shared_data[id.x & ~ComparisonOffset] <= shared_data[id.x | ComparisonOffset]) == (bool)(DirectionChangeStride & id.x)) ? shared_data[id.x ^ ComparisonOffset] : shared_data[id.x];
 
+    int index0 = id.x & ~ComparisonOffset;
+	int index1 = id.x | ComparisonOffset;    
+    if (index0 > id.x) return;
+    
+    int key0 = GetHashCode(AllParticles_Position[index0].xyz);
+    int key1 = GetHashCode(AllParticles_Position[index1].xyz);
     bool shouldSwap = (key0 <= key1) == (bool)(DirectionChangeStride & index0);
+
+
+    // debug
+    //index0 = id.x * 2;
+    //index1 = index0 + GetHashCode(AllParticles_Position[index0]) % (AllParticles_Length /2 );
 
     if (shouldSwap)
     {
-        float3 temp = AllParticles_Position[key0];
-        AllParticles_Position[key0] = AllParticles_Position[key1];
-        AllParticles_Position[key1] = temp;
+        float4 temp = AllParticles_Position[index0];
+        AllParticles_Position[index0] = AllParticles_Position[index1];
+        AllParticles_Position[index1] = temp;
 
-        temp = AllParticles_Velocity[key0];
-        AllParticles_Velocity[key0] = AllParticles_Velocity[key1];
-        AllParticles_Velocity[key1] = temp;
+        temp = AllParticles_Velocity[index0];
+        AllParticles_Velocity[index0] = AllParticles_Velocity[index1];
+        AllParticles_Velocity[index1] = temp;
     }
 }
 
@@ -50,7 +63,7 @@ float DeltaTime;
 [numthreads(64, 1, 1)]
 void Simulate(uint3 id : SV_DispatchThreadID)
 {
-    AllParticles_Position[id.x] = AllParticles_Position[id.x] + AllParticles_Velocity[id.x] * DeltaTime;
+    //AllParticles_Position[id.x] = AllParticles_Position[id.x] + AllParticles_Velocity[id.x] * DeltaTime;
     //AllParticles_Position[id.x] = AllParticles_Position[id.x] + float3(0.1, 1, 1);
 }
 

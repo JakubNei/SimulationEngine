@@ -1,4 +1,4 @@
-// help from https://gist.github.com/sagarpatel/376ed0b42211a65db0ebdb71b91b7617
+// help from, instanced surface shader: https://gist.github.com/sagarpatel/376ed0b42211a65db0ebdb71b91b7617
 
 
 Shader "Unlit/DrawParticles" 
@@ -27,8 +27,8 @@ Shader "Unlit/DrawParticles"
 
 		#ifdef SHADER_API_D3D11		
 
-		StructuredBuffer<float3> AllParticles_Position;
-		StructuredBuffer<float3> AllParticles_Velocity;
+		StructuredBuffer<float4> AllParticles_Position;
+		StructuredBuffer<float4> AllParticles_Velocity;
 
 		#endif
 
@@ -66,7 +66,7 @@ Shader "Unlit/DrawParticles"
 			vertexPos *= Scale;
 
 			#ifdef SHADER_API_D3D11		
-			float3 worldPosition = AllParticles_Position[(uint)v.instanceID];
+			float3 worldPosition = AllParticles_Position[(uint)v.instanceID].xyz;
 			vertexPos += worldPosition;
 			#endif
 

@@ -30,25 +30,34 @@ public class Main : MonoBehaviour
 	{
 		// ERROR: Thread group count is above the maximum allowed limit. Maximum allowed thread group count is 65535
 		//Gpu_AllParticles_Length = 65535 * 64;
-		Gpu_AllParticles_Length = 128 * 64;
+		Gpu_AllParticles_Length = 16 * 64;
 
-		Gpu_AllParticles_Position = new ComputeBuffer(Gpu_AllParticles_Length, Marshal.SizeOf(typeof(float)) * 3, ComputeBufferType.Structured);
+		Gpu_AllParticles_Position = new ComputeBuffer(Gpu_AllParticles_Length, Marshal.SizeOf(typeof(float)) * 4, ComputeBufferType.Structured);
 		var positions = new List<float>(Gpu_AllParticles_Length * 3);
 		// our scale space is in nanometers, atoms have an average radius of about 0.1 nm, so one Unity unit is one nanometer in this project
 		var countOnEdge = Mathf.CeilToInt(Mathf.Pow(Gpu_AllParticles_Length, 0.33f));
 		var gridSizeOnEdge = interactionMaxRadius * countOnEdge;
-		for (int i = 0; i < Gpu_AllParticles_Length; i++)
 		{
-			var xRatio = (i % countOnEdge) / (float)countOnEdge;
-			var yRatio = ((i / (float)countOnEdge) % countOnEdge) / (float)countOnEdge;
-			var zRatio = ((i / (float)(countOnEdge * countOnEdge)) % countOnEdge) / (float)countOnEdge;
-			positions.Add(xRatio * gridSizeOnEdge);
-			positions.Add(yRatio * gridSizeOnEdge);
-			positions.Add(zRatio * gridSizeOnEdge);
+			int i = 0;
+			for (int x = 0; i < Gpu_AllParticles_Length && x < countOnEdge; x++)
+				for (int y = 0; i < Gpu_AllParticles_Length && y < countOnEdge; y++)
+					for (int z = 0; i < Gpu_AllParticles_Length && z < countOnEdge; z++)
+					//for (int i = 0; i < Gpu_AllParticles_Length; i++)
+					{
+						var xRatio = x / (float)countOnEdge;
+						var yRatio = y / (float)countOnEdge;
+						var zRatio = z / (float)countOnEdge;
+						positions.Add(xRatio * gridSizeOnEdge);
+						positions.Add(yRatio * gridSizeOnEdge);
+						positions.Add(zRatio * gridSizeOnEdge);
+						positions.Add(0);
+
+						i++;
+					}
 		}
 		Gpu_AllParticles_Position.SetData(positions);
 
-		Gpu_AllParticles_Velocity = new ComputeBuffer(Gpu_AllParticles_Length, 4 * 3, ComputeBufferType.Structured);
+		Gpu_AllParticles_Velocity = new ComputeBuffer(Gpu_AllParticles_Length, Marshal.SizeOf(typeof(float)) * 4, ComputeBufferType.Structured);
 		var velocities = new List<float>(Gpu_AllParticles_Length * 3);
 		for (int i = 0; i < Gpu_AllParticles_Length; i++)
 		{
@@ -56,6 +65,7 @@ public class Main : MonoBehaviour
 			velocities.Add(v.x);
 			velocities.Add(v.y);
 			velocities.Add(v.z);
+			velocities.Add(0);
 		}
 		Gpu_AllParticles_Velocity.SetData(velocities);
 
@@ -79,7 +89,7 @@ public class Main : MonoBehaviour
 				{
 					computeShader.SetInt("DirectionChangeStride", DirectionChangeStride);
 					computeShader.SetInt("ComparisonOffset", ComparisonOffset);
-					computeShader.Dispatch(bitonicSortKernel, Gpu_AllParticles_Length / 2 / 64, 1, 1);
+					computeShader.Dispatch(bitonicSortKernel, Gpu_AllParticles_Length / 64, 1, 1);
 					if (ComparisonOffset == 1) break;
 				}
 			}

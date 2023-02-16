@@ -238,6 +238,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   ConfigParticlesMaterial: {fileID: 2100000, guid: 88771c58ba7845b44b7931e8880f1d8f, type: 2}
   ConfigParticleMesh: {fileID: 10207, guid: 0000000000000000e000000000000000, type: 0}
+  computeShader: {fileID: 7200000, guid: e23a68e826e45e143bd59f862a9086ca, type: 3}
 --- !u!4 &1402528688
 Transform:
   m_ObjectHideFlags: 0

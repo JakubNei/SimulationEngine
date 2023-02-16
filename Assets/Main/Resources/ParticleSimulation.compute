@@ -2,12 +2,16 @@ RWStructuredBuffer<float4> AllParticles_Position;
 RWStructuredBuffer<float4> AllParticles_Velocity;
 int AllParticles_Length;
 
+RWStructuredBuffer<uint> HashCodeToParticles;
+int HashCodeToParticles_Length;
+
+
 float VoxelCellEdgeSize;
 
-int GetHashCode(float3 position)
+uint GetHashCode(float3 position)
 {
-    int3 p = round(position / VoxelCellEdgeSize);
-    return p.x ^ p.y ^ p.z;
+    uint3 p = abs((int3)(position / VoxelCellEdgeSize));
+    return (p.x ^ p.y ^ p.z) % HashCodeToParticles_Length;
     //return p.y;
 }
 
@@ -34,9 +38,9 @@ void BitonicSort(uint3 id : SV_DispatchThreadID)
 	int index1 = id.x | ComparisonOffset; // index bottom
     if (index1 == id.x) return;
     
-    int key0 = GetHashCode(AllParticles_Position[index0].xyz);
-    int key1 = GetHashCode(AllParticles_Position[index1].xyz);
-    bool shouldSwap = (key0 <= key1) == (bool)(DirectionChangeStride & index0);
+    uint khashcode0 = GetHashCode(AllParticles_Position[index0].xyz);
+    uint khashcode1 = GetHashCode(AllParticles_Position[index1].xyz);
+    bool shouldSwap = (khashcode0 <= khashcode1) == (bool)(DirectionChangeStride & index0);
 
     if (shouldSwap)
     {
@@ -51,6 +55,24 @@ void BitonicSort(uint3 id : SV_DispatchThreadID)
 }
 
 
+#pragma kernel HashCodeToParticles_Initialize
+[numthreads(64, 1, 1)]
+void  HashCodeToParticles_Initialize(uint3 id : SV_DispatchThreadID)
+{  
+    HashCodeToParticles[id.x * 2 + 0] = 0xFFFFFFFF; // max uint
+    HashCodeToParticles[id.x * 2 + 1] = 0;
+}
+
+#pragma kernel HashCodeToParticles_Bin
+[numthreads(64, 1, 1)]
+void  HashCodeToParticles_Bin(uint3 id : SV_DispatchThreadID)
+{  
+    uint index = id.x;
+    uint hashcode = GetHashCode(AllParticles_Position[index].xyz);
+
+    InterlockedMin(HashCodeToParticles[hashcode * 2 + 0], index); // particle start index
+    InterlockedAdd(HashCodeToParticles[hashcode * 2 + 1], 1); // num particles    
+}
 
 float DeltaTime;
 
@@ -58,7 +80,48 @@ float DeltaTime;
 [numthreads(64, 1, 1)]
 void Simulate(uint3 id : SV_DispatchThreadID)
 {
-    AllParticles_Position[id.x] = AllParticles_Position[id.x] + AllParticles_Velocity[id.x] * DeltaTime;
+    uint thisParticleIndex = id.x;
+    float3 thisParticlePosition =  AllParticles_Position[thisParticleIndex].xyz;
+    
+    uint hashcodes[27];
+    {
+        int i = 0;
+        for (int x = -1; x <= 1; x++)
+            for (int y = -1; y <= 1; y++)
+                for (int z = -1; z <= 1; z++)
+                {
+                    hashcodes[i] = GetHashCode(thisParticlePosition + int3(x,y,z) * VoxelCellEdgeSize);
+                    i++;
+                }
+    }
+
+    float3 thisParticleForce = 0;
+
+    for (int h = 0; h < 27; h++)
+    {
+        uint cellFirstParticleIndex = HashCodeToParticles[hashcodes[h] * 2 + 0]; 
+        uint cellTotalNumParticles = HashCodeToParticles[hashcodes[h] * 2 + 1]; 
+
+        uint otherParticleIndex = cellFirstParticleIndex;
+        for (uint p = 0; p < cellTotalNumParticles; p++)
+        {
+            if (otherParticleIndex != thisParticleIndex)
+            {
+                float3 otherParticlePosition = AllParticles_Position[otherParticleIndex].xyz;
+                float3 d = thisParticlePosition - otherParticlePosition;
+                float l = length(d);
+                //thisParticleForce += d / l * 0.01 * (1.0 - min(1.0, l / 0.6));
+                //thisParticleForce += float3(0.0001 * l, 0, 0);
+            }
+            otherParticleIndex++;
+        }
+    }
+
+    float3 thisParticleVelocity = AllParticles_Velocity[thisParticleIndex].xyz;
+    thisParticleVelocity += thisParticleForce * DeltaTime;
+    AllParticles_Position[thisParticleIndex].xyz = thisParticlePosition + thisParticleVelocity * DeltaTime;
+    AllParticles_Velocity[thisParticleIndex].xyz = thisParticleVelocity * 0.99;
+    
     //AllParticles_Position[id.x] = AllParticles_Position[id.x] + float3(0.1, 1, 1);
 }
 

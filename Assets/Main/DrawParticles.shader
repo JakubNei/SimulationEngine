@@ -27,7 +27,7 @@
 
 // 		#ifdef SHADER_API_D3D11		
 
-// 		StructuredBuffer<uint> HashCodeToParticles;
+// 		StructuredBuffer<uint> HashCodeToSortedParticleIndexes;
 // 		StructuredBuffer<float4> AllParticles_Position;
 // 		StructuredBuffer<float4> AllParticles_Velocity;
 		
@@ -78,7 +78,7 @@
 // 			vertexPos += worldPosition;
 
 // 			//h = (((uint)round(worldPosition.y / 3.0f)) % 10) / 10.0f; 
-// 			//h = min(HashCodeToParticles[GetHashCode(worldPosition) * 2 + 1], 20) / 20.0f;
+// 			//h = min(HashCodeToSortedParticleIndexes[GetHashCode(worldPosition) * 2 + 1], 20) / 20.0f;
 // 			//h = GetHashCode(worldPosition) == 5 ? 1 : 0.5; 
 // 			//h = GetHashCode(worldPosition) % 10 / 10.0f; 
 // 			//h = GetHashCode(worldPosition) % 1000 / 1000.0f; 

@@ -43,23 +43,44 @@ public class Main : MonoBehaviour
 		AllParticles_Position = new ComputeBuffer(AllParticles_Length, Marshal.SizeOf(typeof(float)) * 4, ComputeBufferType.Structured);
 		var positions = new List<float>(AllParticles_Length * 3);
 		// our scale space is in nanometers, atoms have an average radius of about 0.1 nm, so one Unity unit is one nanometer in this project
-		var countOnEdge = Mathf.CeilToInt(Mathf.Pow(AllParticles_Length, 0.33f));
-		var gridSizeOnEdge = interactionMaxRadius * countOnEdge;
+		// {
+		// 	var countOnEdge = Mathf.CeilToInt(Mathf.Pow(AllParticles_Length, 1 / 3.0f));
+		// 	var gridSizeOnEdge = interactionMaxRadius * countOnEdge;
+		// 	{
+		// 		int i = 0;
+		// 		for (int x = 0; i < AllParticles_Length && x < countOnEdge; x++)
+		// 			for (int y = 0; i < AllParticles_Length && y < countOnEdge; y++)
+		// 				for (int z = 0; i < AllParticles_Length && z < countOnEdge; z++)
+		// 				{
+		// 					var xRatio = x / (float)countOnEdge;
+		// 					var yRatio = y / (float)countOnEdge;
+		// 					var zRatio = z / (float)countOnEdge;
+		// 					positions.Add(xRatio * gridSizeOnEdge);
+		// 					positions.Add(yRatio * gridSizeOnEdge);
+		// 					positions.Add(zRatio * gridSizeOnEdge);
+		// 					positions.Add(0);
+		// 					i++;
+		// 				}
+		// 	}
+		// }
+
 		{
-			int i = 0;
-			for (int x = 0; i < AllParticles_Length && x < countOnEdge; x++)
-				for (int y = 0; i < AllParticles_Length && y < countOnEdge; y++)
-					for (int z = 0; i < AllParticles_Length && z < countOnEdge; z++)
+			var countOnEdge = Mathf.CeilToInt(Mathf.Pow(AllParticles_Length, 1 / 2.0f));
+			var gridSizeOnEdge = interactionMaxRadius * countOnEdge;
+			{
+				int i = 0;
+				for (int x = 0; i < AllParticles_Length && x < countOnEdge; x++)
+					for (int y = 0; i < AllParticles_Length && y < countOnEdge; y++)
 					{
 						var xRatio = x / (float)countOnEdge;
 						var yRatio = y / (float)countOnEdge;
-						var zRatio = z / (float)countOnEdge;
 						positions.Add(xRatio * gridSizeOnEdge);
 						positions.Add(yRatio * gridSizeOnEdge);
-						positions.Add(zRatio * gridSizeOnEdge);
+						positions.Add(0);
 						positions.Add(0);
 						i++;
 					}
+			}
 		}
 		AllParticles_Position.SetData(positions);
 
@@ -68,12 +89,12 @@ public class Main : MonoBehaviour
 		for (int i = 0; i < AllParticles_Length; i++)
 		{
 			var v = Random.insideUnitSphere * 0.1f;
-			// velocities.Add(v.x);
-			// velocities.Add(v.y);
-			// velocities.Add(v.z);
+			velocities.Add(v.x);
+			velocities.Add(v.y);
+			//velocities.Add(v.z);
 			velocities.Add(0);
-			velocities.Add(0);
-			velocities.Add(0);
+			// velocities.Add(0);
+			// velocities.Add(0);
 			velocities.Add(0);
 		}
 		AllParticles_Velocity.SetData(velocities);
@@ -143,7 +164,10 @@ public class Main : MonoBehaviour
 		material.SetInt("AllParticles_Length", AllParticles_Length);
 		material.SetBuffer("AllParticles_Position", AllParticles_Position);
 		material.SetBuffer("AllParticles_Velocity", AllParticles_Velocity);
+		material.SetBuffer("HashCodeToParticles", HashCodeToParticles);
+		material.SetInt("HashCodeToParticles_Length", HashCodeToParticles_Length);
 		material.SetFloat("Scale", particleRadius);
+		material.SetFloat("VoxelCellEdgeSize", VoxelCellEdgeSize);
 
 		var bounds = new Bounds(Vector3.zero, new Vector3(float.MaxValue, float.MaxValue, float.MaxValue));
 		Graphics.DrawMeshInstancedIndirect(

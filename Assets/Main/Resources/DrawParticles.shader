@@ -27,13 +27,23 @@ Shader "Unlit/DrawParticles"
 
 		#ifdef SHADER_API_D3D11		
 
+		StructuredBuffer<uint> HashCodeToParticles;
 		StructuredBuffer<float4> AllParticles_Position;
 		StructuredBuffer<float4> AllParticles_Velocity;
-
+		
 		#endif
 
+		float VoxelCellEdgeSize;
+		int HashCodeToParticles_Length;
 		int AllParticles_Length;
 		float Scale;
+
+
+		uint GetHashCode(float3 position)
+		{
+			uint3 p = abs((int3)(position / VoxelCellEdgeSize));
+			return (p.x ^ p.y ^ p.z) % HashCodeToParticles_Length;
+		}
 
 		// struct for vertex input data
 		struct appdata_id
@@ -65,14 +75,22 @@ Shader "Unlit/DrawParticles"
 			
 			vertexPos *= Scale;
 
+			float h = 0;
 			#ifdef SHADER_API_D3D11		
+
 			float3 worldPosition = AllParticles_Position[(uint)v.instanceID].xyz;
 			vertexPos += worldPosition;
+
+			//h = (((uint)round(worldPosition.y / 3.0f)) % 10) / 10.0f; 
+			//h = GetHashCode(worldPosition) % 10 / 10.0f; 
+			h = (HashCodeToParticles[GetHashCode(worldPosition) * 2 + 1] % 5) / 5.0f;
+			//h = v.instanceID/(float)AllParticles_Length;
+
 			#endif
 
-			v.vertex.xyz = vertexPos;
 
-			float3 c = HUEToRGB(v.instanceID/(float)AllParticles_Length);
+			v.vertex.xyz = vertexPos;
+			float3 c = HUEToRGB(h);
 			o.col = float4(c,1);
 		}
 

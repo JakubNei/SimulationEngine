@@ -38,9 +38,9 @@ void BitonicSort(uint3 id : SV_DispatchThreadID)
 	int index1 = id.x | ComparisonOffset; // index bottom
     if (index1 == id.x) return;
     
-    uint khashcode0 = GetHashCode(AllParticles_Position[index0].xyz);
-    uint khashcode1 = GetHashCode(AllParticles_Position[index1].xyz);
-    bool shouldSwap = (khashcode0 <= khashcode1) == (bool)(DirectionChangeStride & index0);
+    uint hashcode0 = GetHashCode(AllParticles_Position[index0].xyz);
+    uint hashcode1 = GetHashCode(AllParticles_Position[index1].xyz);
+    bool shouldSwap = (hashcode0 <= hashcode1) == (bool)(DirectionChangeStride & index0);
 
     if (shouldSwap)
     {
@@ -110,19 +110,18 @@ void Simulate(uint3 id : SV_DispatchThreadID)
                 float3 otherParticlePosition = AllParticles_Position[otherParticleIndex].xyz;
                 float3 d = thisParticlePosition - otherParticlePosition;
                 float l = length(d);
-                //thisParticleForce += d / l * 0.01 * (1.0 - min(1.0, l / 0.6));
+                thisParticleForce += d / l * 0.01 * (1.0 - min(1.0, l / 0.6));
                 //thisParticleForce += float3(0.0001 * l, 0, 0);
             }
             otherParticleIndex++;
         }
     }
 
+
     float3 thisParticleVelocity = AllParticles_Velocity[thisParticleIndex].xyz;
     thisParticleVelocity += thisParticleForce * DeltaTime;
     AllParticles_Position[thisParticleIndex].xyz = thisParticlePosition + thisParticleVelocity * DeltaTime;
-    AllParticles_Velocity[thisParticleIndex].xyz = thisParticleVelocity * 0.99;
-    
-    //AllParticles_Position[id.x] = AllParticles_Position[id.x] + float3(0.1, 1, 1);
+    AllParticles_Velocity[thisParticleIndex].xyz = thisParticleVelocity * 0.999;
 }
 
 

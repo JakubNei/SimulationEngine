@@ -38,6 +38,8 @@ public class Main : MonoBehaviour
 		HashCodeToParticles_Length = 1024 * 64;
 		HashCodeToParticles = new ComputeBuffer(HashCodeToParticles_Length * 2, Marshal.SizeOf(typeof(uint)), ComputeBufferType.Structured);
 
+		//AllParticles_Length = 128 * 128 * 64; // 1 million
+		//AllParticles_Length = 1024 * 64;
 		AllParticles_Length = 64 * 64;
 
 

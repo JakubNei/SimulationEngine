@@ -32,18 +32,12 @@ Shader "Unlit/DrawParticles"
 		StructuredBuffer<float4> AllParticles_Velocity;
 		
 		#endif
-
-		float VoxelCellEdgeSize;
-		int HashCodeToParticles_Length;
+		
 		int AllParticles_Length;
 		float Scale;
 
+		#include "Common.cginc"
 
-		uint GetHashCode(float3 position)
-		{
-			uint3 p = abs((int3)(position / VoxelCellEdgeSize));
-			return (p.x ^ p.y ^ p.z) % HashCodeToParticles_Length;
-		}
 
 		// struct for vertex input data
 		struct appdata_id
@@ -74,23 +68,29 @@ Shader "Unlit/DrawParticles"
 			UNITY_INITIALIZE_OUTPUT(Input, o);			
 			
 			vertexPos *= Scale;
+			float3 c = 1;
 
-			float h = 0;
 			#ifdef SHADER_API_D3D11		
 
-			float3 worldPosition = AllParticles_Position[(uint)v.instanceID].xyz;
+			float h = 0;			
+			float4 positionData = AllParticles_Position[(uint)v.instanceID];
+			float3 worldPosition = positionData.xyz;
 			vertexPos += worldPosition;
 
 			//h = (((uint)round(worldPosition.y / 3.0f)) % 10) / 10.0f; 
+			//h = min(HashCodeToParticles[GetHashCode(worldPosition) * 2 + 1], 20) / 20.0f;
+			//h = GetHashCode(worldPosition) == 5 ? 1 : 0.5; 
 			//h = GetHashCode(worldPosition) % 10 / 10.0f; 
-			h = (HashCodeToParticles[GetHashCode(worldPosition) * 2 + 1] % 5) / 5.0f;
+			//h = GetHashCode(worldPosition) % 1000 / 1000.0f; 
 			//h = v.instanceID/(float)AllParticles_Length;
+			//c = HUEToRGB(h);
+			
+			c = float3(positionData.w / 5.0f, 1 - positionData.w / 5.0f, 0);
 
 			#endif
 
 
 			v.vertex.xyz = vertexPos;
-			float3 c = HUEToRGB(h);
 			o.col = float4(c,1);
 		}
 

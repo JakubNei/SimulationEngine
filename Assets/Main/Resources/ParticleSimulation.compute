@@ -1,19 +1,10 @@
+#include "Common.cginc"
+
 RWStructuredBuffer<float4> AllParticles_Position;
 RWStructuredBuffer<float4> AllParticles_Velocity;
 int AllParticles_Length;
 
 RWStructuredBuffer<uint> HashCodeToParticles;
-int HashCodeToParticles_Length;
-
-
-float VoxelCellEdgeSize;
-
-uint GetHashCode(float3 position)
-{
-    uint3 p = abs((int3)(position / VoxelCellEdgeSize));
-    return (p.x ^ p.y ^ p.z) % HashCodeToParticles_Length;
-    //return p.y;
-}
 
 
 
@@ -57,15 +48,16 @@ void BitonicSort(uint3 id : SV_DispatchThreadID)
 
 #pragma kernel HashCodeToParticles_Initialize
 [numthreads(64, 1, 1)]
-void  HashCodeToParticles_Initialize(uint3 id : SV_DispatchThreadID)
+void HashCodeToParticles_Initialize(uint3 id : SV_DispatchThreadID)
 {  
     HashCodeToParticles[id.x * 2 + 0] = 0xFFFFFFFF; // max uint
     HashCodeToParticles[id.x * 2 + 1] = 0;
 }
 
+
 #pragma kernel HashCodeToParticles_Bin
 [numthreads(64, 1, 1)]
-void  HashCodeToParticles_Bin(uint3 id : SV_DispatchThreadID)
+void HashCodeToParticles_Bin(uint3 id : SV_DispatchThreadID)
 {  
     uint index = id.x;
     uint hashcode = GetHashCode(AllParticles_Position[index].xyz);
@@ -73,6 +65,7 @@ void  HashCodeToParticles_Bin(uint3 id : SV_DispatchThreadID)
     InterlockedMin(HashCodeToParticles[hashcode * 2 + 0], index); // particle start index
     InterlockedAdd(HashCodeToParticles[hashcode * 2 + 1], 1); // num particles    
 }
+
 
 float DeltaTime;
 
@@ -96,6 +89,7 @@ void Simulate(uint3 id : SV_DispatchThreadID)
     }
 
     float3 thisParticleForce = 0;
+    int numForceCausingOthers = 0;
 
     for (int h = 0; h < 27; h++)
     {
@@ -110,8 +104,13 @@ void Simulate(uint3 id : SV_DispatchThreadID)
                 float3 otherParticlePosition = AllParticles_Position[otherParticleIndex].xyz;
                 float3 d = thisParticlePosition - otherParticlePosition;
                 float l = length(d);
-                thisParticleForce += d / l * 0.01 * (1.0 - min(1.0, l / 0.6));
-                //thisParticleForce += float3(0.0001 * l, 0, 0);
+                const float interactionMaxRadius = 0.2;
+                if (l <= interactionMaxRadius)
+                {
+                    thisParticleForce += d / l * 10 * (1.0 - min(1.0, l / interactionMaxRadius));
+                    //thisParticleForce += float3(0.0001 * l, 0, 0);
+                    numForceCausingOthers++;
+                }
             }
             otherParticleIndex++;
         }
@@ -120,8 +119,8 @@ void Simulate(uint3 id : SV_DispatchThreadID)
 
     float3 thisParticleVelocity = AllParticles_Velocity[thisParticleIndex].xyz;
     thisParticleVelocity += thisParticleForce * DeltaTime;
-    AllParticles_Position[thisParticleIndex].xyz = thisParticlePosition + thisParticleVelocity * DeltaTime;
-    AllParticles_Velocity[thisParticleIndex].xyz = thisParticleVelocity * 0.999;
+    AllParticles_Position[thisParticleIndex] = float4(thisParticlePosition + thisParticleVelocity * DeltaTime, numForceCausingOthers);
+    AllParticles_Velocity[thisParticleIndex].xyz = thisParticleVelocity * 0.99;
 }
 
 

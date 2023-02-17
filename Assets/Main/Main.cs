@@ -25,9 +25,10 @@ public class Main : MonoBehaviour
 	ComputeBuffer HashCodeToParticles;
 	int HashCodeToParticles_Length;
 
-	const float interactionMaxRadius = 1;
-	const float particleRadius = 0.3f;
-	float VoxelCellEdgeSize = interactionMaxRadius * 2;
+	// our scale space is in nanometers, atoms have an average radius of about 0.1 nm, so one Unity unit is one nanometer in this project
+	const float particleRadius = 0.1f;
+	const float interactionMaxRadius = particleRadius * 2;
+	float VoxelCellEdgeSize = interactionMaxRadius;
 
 	// Start is called before the first frame update
 	void Start()
@@ -35,34 +36,13 @@ public class Main : MonoBehaviour
 		// ERROR: Thread group count is above the maximum allowed limit. Maximum allowed thread group count is 65535
 
 		HashCodeToParticles_Length = 1024 * 64;
-		HashCodeToParticles = new ComputeBuffer(HashCodeToParticles_Length, Marshal.SizeOf(typeof(uint)) * 2, ComputeBufferType.Structured);
+		HashCodeToParticles = new ComputeBuffer(HashCodeToParticles_Length * 2, Marshal.SizeOf(typeof(uint)), ComputeBufferType.Structured);
 
-		AllParticles_Length = 16 * 64;
+		AllParticles_Length = 64 * 64;
 
 
 		AllParticles_Position = new ComputeBuffer(AllParticles_Length, Marshal.SizeOf(typeof(float)) * 4, ComputeBufferType.Structured);
 		var positions = new List<float>(AllParticles_Length * 3);
-		// our scale space is in nanometers, atoms have an average radius of about 0.1 nm, so one Unity unit is one nanometer in this project
-		// {
-		// 	var countOnEdge = Mathf.CeilToInt(Mathf.Pow(AllParticles_Length, 1 / 3.0f));
-		// 	var gridSizeOnEdge = interactionMaxRadius * countOnEdge;
-		// 	{
-		// 		int i = 0;
-		// 		for (int x = 0; i < AllParticles_Length && x < countOnEdge; x++)
-		// 			for (int y = 0; i < AllParticles_Length && y < countOnEdge; y++)
-		// 				for (int z = 0; i < AllParticles_Length && z < countOnEdge; z++)
-		// 				{
-		// 					var xRatio = x / (float)countOnEdge;
-		// 					var yRatio = y / (float)countOnEdge;
-		// 					var zRatio = z / (float)countOnEdge;
-		// 					positions.Add(xRatio * gridSizeOnEdge);
-		// 					positions.Add(yRatio * gridSizeOnEdge);
-		// 					positions.Add(zRatio * gridSizeOnEdge);
-		// 					positions.Add(0);
-		// 					i++;
-		// 				}
-		// 	}
-		// }
 
 		{
 			var countOnEdge = Mathf.CeilToInt(Mathf.Pow(AllParticles_Length, 1 / 2.0f));
@@ -72,11 +52,13 @@ public class Main : MonoBehaviour
 				for (int x = 0; i < AllParticles_Length && x < countOnEdge; x++)
 					for (int y = 0; i < AllParticles_Length && y < countOnEdge; y++)
 					{
-						var xRatio = x / (float)countOnEdge;
-						var yRatio = y / (float)countOnEdge;
-						positions.Add(xRatio * gridSizeOnEdge);
-						positions.Add(yRatio * gridSizeOnEdge);
-						positions.Add(0);
+						var p = new Vector3(x * interactionMaxRadius, y * interactionMaxRadius, 0);
+						p += Random.onUnitSphere * interactionMaxRadius;
+						p.z = 0;
+
+						positions.Add(p.x);
+						positions.Add(p.y);
+						positions.Add(p.z);
 						positions.Add(0);
 						i++;
 					}
@@ -88,13 +70,12 @@ public class Main : MonoBehaviour
 		var velocities = new List<float>(AllParticles_Length * 3);
 		for (int i = 0; i < AllParticles_Length; i++)
 		{
-			var v = Random.insideUnitSphere * 0.1f;
+			//var v = Random.insideUnitSphere * 0.1f;
+			var v = Vector3.zero;
+			v.z = 0;
 			velocities.Add(v.x);
 			velocities.Add(v.y);
-			//velocities.Add(v.z);
-			velocities.Add(0);
-			// velocities.Add(0);
-			// velocities.Add(0);
+			velocities.Add(v.z);
 			velocities.Add(0);
 		}
 		AllParticles_Velocity.SetData(velocities);
@@ -166,7 +147,7 @@ public class Main : MonoBehaviour
 		material.SetBuffer("AllParticles_Velocity", AllParticles_Velocity);
 		material.SetBuffer("HashCodeToParticles", HashCodeToParticles);
 		material.SetInt("HashCodeToParticles_Length", HashCodeToParticles_Length);
-		material.SetFloat("Scale", particleRadius);
+		material.SetFloat("Scale", particleRadius * 2);
 		material.SetFloat("VoxelCellEdgeSize", VoxelCellEdgeSize);
 
 		var bounds = new Bounds(Vector3.zero, new Vector3(float.MaxValue, float.MaxValue, float.MaxValue));

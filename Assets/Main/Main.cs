@@ -14,9 +14,6 @@ public class Main : MonoBehaviour
 	[SerializeField]
 	ComputeShader ConfigComputeShader;
 
-	[SerializeField]
-	GameObject SelectionSphere;
-
 	int AllParticles_Length;
 	ComputeBuffer AllParticles_Position;
 	ComputeBuffer AllParticles_Velocity;
@@ -45,6 +42,16 @@ public class Main : MonoBehaviour
 	}
 
 	List<CursorHitResult> lastCursorHitResults = new();
+	CursorHitResult? lastClosestCursorHitResult;
+
+	List<int> emptyHitResult = new(1024);
+	Queue<ComputeBuffer> hitResultPool = new();
+
+	List<float> emptyFetchParticlePosition = new(4);
+	Queue<ComputeBuffer> fetchParticlePositionPool = new();
+
+	uint? DraggingParticleIndex;
+	Vector3? DraggingParticleWorldPos;
 
 
 	// Start is called before the first frame update
@@ -112,7 +119,11 @@ public class Main : MonoBehaviour
 		IndirectArguments_DrawMeshParticles = new ComputeBuffer(5, sizeof(int), ComputeBufferType.IndirectArguments);
 		IndirectArguments_DrawMeshParticles.SetData(new uint[] { ConfigParticleMesh.GetIndexCount(0), (uint)AllParticles_Length, ConfigParticleMesh.GetIndexStart(0), ConfigParticleMesh.GetBaseVertex(0), 0 });
 
+		for (int i = 0; i < emptyHitResult.Capacity; i++)
+			emptyHitResult.Add(0);
 
+		for (int i = 0; i < emptyFetchParticlePosition.Capacity; i++)
+			emptyFetchParticlePosition.Add(0);
 	}
 
 	// Update is called once per frame
@@ -156,8 +167,9 @@ public class Main : MonoBehaviour
 		}
 
 		{
-			// TODO pool this
-			var hitResult = new ComputeBuffer(1024, Marshal.SizeOf(typeof(int)) * 4, ComputeBufferType.Structured);
+			if (!hitResultPool.TryDequeue(out var hitResult))
+				hitResult = new ComputeBuffer(emptyHitResult.Count, Marshal.SizeOf(typeof(int)) * 4, ComputeBufferType.Structured);
+			hitResult.SetData(emptyHitResult);
 
 			var ray = Camera.main.ScreenPointToRay(Input.mousePosition);
 			var raycastHitParticles = ConfigComputeShader.FindKernel("RaycastHitParticles");
@@ -186,18 +198,69 @@ public class Main : MonoBehaviour
 					});
 				}
 
-				hitResult.Release();
-			});
+				lastClosestCursorHitResult = null;
+				var closestDistance = float.MaxValue;
+				for (int i = 0; i < lastCursorHitResults.Count; i++)
+				{
+					var distance = Vector3.Distance(ray.origin, lastCursorHitResults[i].worldPosition);
+					if (distance < closestDistance)
+					{
+						closestDistance = distance;
+						lastClosestCursorHitResult = lastCursorHitResults[i];
+					}
+				}
 
-			if (lastCursorHitResults.Count > 0)
+				hitResultPool.Enqueue(hitResult);
+			});
+		}
+
+		// drag
+		{
+			if (DraggingParticleIndex.HasValue)
 			{
-				SelectionSphere.SetActive(true);
-				SelectionSphere.transform.position = lastCursorHitResults[0].worldPosition;
-				SelectionSphere.transform.localScale = Vector3.one * particleRadius * 2.4f;
+				if (!Input.GetKey(KeyCode.Mouse0))
+				{
+					// exit drag
+					DraggingParticleIndex = null;
+					ConfigComputeShader.SetInt("DragParticleIndex", -1);
+				}
+				else
+				{
+					// tick drag
+					ReadbackParticlePosition(DraggingParticleIndex.Value, (worldPosition) =>
+					{
+						DraggingParticleWorldPos = worldPosition;
+					});
+					var ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+					var dragPlane = new Plane(Camera.main.transform.forward, DraggingParticleWorldPos.Value);
+					if (dragPlane.Raycast(ray, out float enter))
+					{
+						var dragTargetPosition = ray.origin + ray.direction * enter;
+						ConfigComputeShader.SetInt("DragParticleIndex", (int)DraggingParticleIndex);
+						ConfigComputeShader.SetVector("DragTargetWorldPosition", dragTargetPosition);
+						SimpleDraw.Game.Line(DraggingParticleWorldPos.Value, dragTargetPosition, Color.white);
+					}
+					else
+					{
+						// exit drag
+						DraggingParticleIndex = null;
+						ConfigComputeShader.SetInt("DragParticleIndex", -1);
+					}
+				}
 			}
-			else
+			else if (Input.GetKeyDown(KeyCode.Mouse0) && lastClosestCursorHitResult.HasValue)
 			{
-				SelectionSphere.SetActive(false);
+				// start drag
+				DraggingParticleIndex = (uint)lastClosestCursorHitResult.Value.particleIndex;
+				DraggingParticleWorldPos = lastClosestCursorHitResult.Value.worldPosition;
+			}
+			else if (lastClosestCursorHitResult.HasValue)
+			{
+				// highlight particle to drag
+				SimpleDraw.Game.Circle(
+					lastClosestCursorHitResult.Value.worldPosition,
+					Quaternion.LookRotation((lastClosestCursorHitResult.Value.worldPosition - Camera.main.transform.position).normalized, Camera.main.transform.up),
+					Color.white, particleRadius * 1.4f);
 			}
 		}
 
@@ -235,5 +298,14 @@ public class Main : MonoBehaviour
 		// Graphics.DrawMeshInstancedIndirect(
 		// 	ConfigParticleMesh, 0, material, bounds, Gpu_IndirectArguments_DrawMeshParticles,
 		// 	0, null, ShadowCastingMode.On, true, 0, null, LightProbeUsage.BlendProbes);
+	}
+
+	void ReadbackParticlePosition(uint particleIndex, System.Action<Vector3> resultCallback)
+	{
+		AsyncGPUReadback.Request(AllParticles_Position, AllParticles_Position.stride, AllParticles_Position.stride * (int)particleIndex, (result) =>
+		{
+			var data = result.GetData<float>();
+			resultCallback?.Invoke(new Vector3(data[0], data[1], data[2]));
+		});
 	}
 }

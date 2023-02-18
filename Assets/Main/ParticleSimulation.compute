@@ -173,7 +173,7 @@ void Simulate(uint3 id : SV_DispatchThreadID)
     {
         float3 direction = DragTargetWorldPosition - thisParticlePosition;
         float len = length(direction);
-        thisParticleForce += direction / len * 10;             
+        thisParticleForce += direction / len * 5;             
     }
 
     float3 thisParticleVelocity = AllParticles_Velocity[thisParticleIndex].xyz;
@@ -183,5 +183,5 @@ void Simulate(uint3 id : SV_DispatchThreadID)
 
     thisParticleVelocity += thisParticleForce * DeltaTime;
     AllParticles_Position[thisParticleIndex] = float4(thisParticlePosition + thisParticleVelocity * DeltaTime, countOfOtherParticlesInRange);
-    AllParticles_Velocity[thisParticleIndex].xyz = thisParticleVelocity * 0.99;
+    AllParticles_Velocity[thisParticleIndex].xyz = thisParticleVelocity * (1 - DeltaTime);
 }

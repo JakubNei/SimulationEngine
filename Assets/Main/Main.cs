@@ -83,22 +83,22 @@ public class Main : MonoBehaviour
 		{
 			var countOnEdge = Mathf.CeilToInt(Mathf.Pow(AllParticles_Length, 1 / 2.0f));
 			var gridSizeOnEdge = interactionMaxRadius * countOnEdge;
-			{
-				int i = 0;
-				for (int x = 0; i < AllParticles_Length && x < countOnEdge; x++)
-					for (int y = 0; i < AllParticles_Length && y < countOnEdge; y++)
-					{
-						var p = new Vector3(x * interactionMaxRadius, y * interactionMaxRadius, 0);
-						p += Random.onUnitSphere * interactionMaxRadius;
-						p.z = 0;
+			Random.InitState(0x6584f86);
+			int i = 0;
+			for (int x = 0; i < AllParticles_Length && x < countOnEdge; x++)
+				for (int y = 0; i < AllParticles_Length && y < countOnEdge; y++)
+				{
+					var p = new Vector3(x * interactionMaxRadius, y * interactionMaxRadius, 0);
+					p += Random.onUnitSphere * interactionMaxRadius;
+					p.z = 0;
 
-						positions.Add(p.x);
-						positions.Add(p.y);
-						positions.Add(p.z);
-						positions.Add(0);
-						i++;
-					}
-			}
+					positions.Add(p.x);
+					positions.Add(p.y);
+					positions.Add(p.z);
+					positions.Add(0);
+					i++;
+				}
+
 		}
 		AllParticles_Position.SetData(positions);
 
@@ -266,7 +266,7 @@ public class Main : MonoBehaviour
 
 		{
 			var simulate = ConfigComputeShader.FindKernel("Simulate");
-			ConfigComputeShader.SetFloat("DeltaTime", Time.deltaTime);
+			ConfigComputeShader.SetFloat("DeltaTime", 0.01f);
 			ConfigComputeShader.SetBuffer(simulate, "AllParticles_Position", AllParticles_Position);
 			ConfigComputeShader.SetBuffer(simulate, "AllParticles_Velocity", AllParticles_Velocity);
 			ConfigComputeShader.SetFloat("VoxelCellEdgeSize", VoxelCellEdgeSize);

@@ -14,7 +14,11 @@ public class Main : MonoBehaviour
 	[SerializeField]
 	ComputeShader ConfigComputeShader;
 
-	int AllParticles_Length;
+
+	//int AllParticles_Length = 128 * 128 * 64; // 1 million
+	//int AllParticles_Length = 1024 * 64; // 65k
+	int AllParticles_Length = 2 * 64 * 64;
+
 	ComputeBuffer AllParticles_Position;
 	ComputeBuffer AllParticles_Velocity;
 
@@ -28,7 +32,7 @@ public class Main : MonoBehaviour
 	// [first particle index in SortedParticleIndexes, num particles] *  HashCodeToSortedParticleIndexes_Length
 	ComputeBuffer HashCodeToSortedParticleIndexes;
 	// maximum amount of voxel cells
-	int HashCodeToSortedParticleIndexes_Length;
+	int HashCodeToSortedParticleIndexes_Length = 1024 * 64;
 
 	// our scale space is in nanometers, atoms have an average radius of about 0.1 nm, so one Unity unit is one nanometer in this project
 	const float particleRadius = 0.1f;
@@ -53,17 +57,14 @@ public class Main : MonoBehaviour
 	uint? DraggingParticleIndex;
 	Vector3? DraggingParticleWorldPos;
 
-
 	// Start is called before the first frame update
 	void Start()
 	{
 		// ERROR: Thread group count is above the maximum allowed limit. Maximum allowed thread group count is 65535
 
-		//AllParticles_Length = 128 * 128 * 64; // 1 million
-		//AllParticles_Length = 1024 * 64;
-		AllParticles_Length = 64 * 64;
-
-		HashCodeToSortedParticleIndexes_Length = 1024 * 64;
+		// force 64 for num threads
+		AllParticles_Length = (AllParticles_Length / 64) * 64;
+		HashCodeToSortedParticleIndexes_Length = (HashCodeToSortedParticleIndexes_Length / 64) * 64;
 
 		HashCodeToSortedParticleIndexes = new ComputeBuffer(HashCodeToSortedParticleIndexes_Length * 2, Marshal.SizeOf(typeof(uint)), ComputeBufferType.Structured);
 
@@ -119,11 +120,54 @@ public class Main : MonoBehaviour
 		IndirectArguments_DrawMeshParticles = new ComputeBuffer(5, sizeof(int), ComputeBufferType.IndirectArguments);
 		IndirectArguments_DrawMeshParticles.SetData(new uint[] { ConfigParticleMesh.GetIndexCount(0), (uint)AllParticles_Length, ConfigParticleMesh.GetIndexStart(0), ConfigParticleMesh.GetBaseVertex(0), 0 });
 
-		for (int i = 0; i < emptyHitResult.Capacity; i++)
+		emptyHitResult.Clear();
+		for (int i = 0; i < 4; i++)
 			emptyHitResult.Add(0);
 
-		for (int i = 0; i < emptyFetchParticlePosition.Capacity; i++)
+		emptyFetchParticlePosition.Clear();
+		for (int i = 0; i < 1024; i++)
 			emptyFetchParticlePosition.Add(0);
+	}
+
+	void OnDestroy()
+	{
+		AllParticles_Position?.Dispose();
+		AllParticles_Position = null;
+		AllParticles_Velocity?.Dispose();
+		AllParticles_Velocity = null;
+		IndirectArguments_DrawMeshParticles?.Dispose();
+		IndirectArguments_DrawMeshParticles = null;
+		SortedParticleIndexes?.Dispose();
+		SortedParticleIndexes = null;
+		HashCodeToSortedParticleIndexes?.Dispose();
+		HashCodeToSortedParticleIndexes = null;
+
+		foreach (var c in hitResultPool)
+			c.Dispose();
+		hitResultPool.Clear();
+
+		foreach (var c in fetchParticlePositionPool)
+			c.Dispose();
+		fetchParticlePositionPool.Clear();
+	}
+
+
+	void OnGUI()
+	{
+		GUILayout.Label("fps " + Mathf.RoundToInt(1.0f / Time.smoothDeltaTime));
+		GUILayout.Label("num particles " + AllParticles_Length);
+		if (GUILayout.Button("increase *2"))
+		{
+			AllParticles_Length *= 2;
+			OnDestroy();
+			Start();
+		}
+		if (GUILayout.Button("decrease /2"))
+		{
+			AllParticles_Length /= 2;
+			OnDestroy();
+			Start();
+		}
 	}
 
 	// Update is called once per frame

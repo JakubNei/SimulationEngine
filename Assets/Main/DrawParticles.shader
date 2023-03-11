@@ -150,8 +150,8 @@ Shader "Unlit/DrawParticles"
 				float4 positionData = AllParticles_Position[instanceID];
 				v2f o;
 				o.pos = mul(UNITY_MATRIX_VP, float4(v.vertex.xyz * Scale + positionData.xyz, 1.0f));
-				float speed = saturate(length(AllParticles_Velocity[instanceID]) * 10);
-				float neighbours = saturate(positionData.w / 3.0f);
+				float speed = saturate(length(AllParticles_Velocity[instanceID]) / 3.0f);
+				float neighbours = saturate(positionData.w / 20.0f);
 				o.color = float3(speed, (1.5 - neighbours) * (1 - speed), neighbours);
 				o.color *= lerp(0.1, 1, 0.1 + max(0, dot(v.normal, float3(0,1,0))));
 				return o;

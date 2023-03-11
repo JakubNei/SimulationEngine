@@ -91,7 +91,7 @@ public class Main : MonoBehaviour
 				{
 					var p = new Vector3(x * interactionMaxRadius, y * interactionMaxRadius, 0);
 					p += Random.onUnitSphere * interactionMaxRadius;
-					p.z = 0;
+					p.z = 0.1f;
 
 					positions.Add(p.x);
 					positions.Add(p.y);
@@ -109,7 +109,6 @@ public class Main : MonoBehaviour
 		{
 			//var v = Random.insideUnitSphere * 0.1f;
 			var v = Vector3.zero;
-			v.z = 0;
 			velocities.Add(v.x);
 			velocities.Add(v.y);
 			velocities.Add(v.z);
@@ -228,7 +227,7 @@ public class Main : MonoBehaviour
 			{
 				var data = result.GetData<int>();
 				lastCursorHitResults.Clear();
-				for (int x = 0; x < data[0]; x++)
+				for (int x = 0; x < data[0] && (x + 1) * 4 < data.Length; x++)
 				{
 					// TODO use struct from ComputeShader
 					lastCursorHitResults.Add(new CursorHitResult()

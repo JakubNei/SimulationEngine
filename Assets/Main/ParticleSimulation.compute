@@ -161,7 +161,7 @@ void Simulate(uint3 id : SV_DispatchThreadID)
                 const float interactionMaxRadius = 0.2;
                 if (len <= interactionMaxRadius)
                 {
-                    thisParticleForce += direction / len * 10 * (1.0 - min(1.0, len / interactionMaxRadius));
+                    thisParticleForce += direction / len * 20 * (1.0 - min(1.0, len / interactionMaxRadius));
                     countOfOtherParticlesInRange++;
                 }
             }
@@ -178,10 +178,48 @@ void Simulate(uint3 id : SV_DispatchThreadID)
 
     float3 thisParticleVelocity = AllParticles_Velocity[thisParticleIndex].xyz;
     
-    thisParticleVelocity.z = 0;    
-    thisParticlePosition.z = 0;
+    thisParticleForce.y -= 50 * DeltaTime;
+
 
     thisParticleVelocity += thisParticleForce * DeltaTime;
-    AllParticles_Position[thisParticleIndex] = float4(thisParticlePosition + thisParticleVelocity * DeltaTime, countOfOtherParticlesInRange);
-    AllParticles_Velocity[thisParticleIndex].xyz = thisParticleVelocity * (1 - DeltaTime);
+    thisParticlePosition += thisParticleVelocity * DeltaTime;
+
+    thisParticleVelocity.z = 0;    
+    thisParticlePosition.z = 0;
+    
+    if (thisParticlePosition.x < 0) 
+    {
+        thisParticlePosition.x = 0;
+        thisParticleVelocity.x = abs(thisParticleVelocity.x);
+    }
+    if (thisParticlePosition.x > 20) 
+    {
+        thisParticlePosition.x = 20;
+        thisParticleVelocity.x = -abs(thisParticleVelocity.x);
+    }
+    if (thisParticlePosition.y < 0) 
+    {
+        thisParticlePosition.y = 0;
+        thisParticleVelocity.y = abs(thisParticleVelocity.y);
+    }
+    if (thisParticlePosition.y > 20) 
+    {
+        thisParticlePosition.y = 20;
+        thisParticleVelocity.y = -abs(thisParticleVelocity.y);
+    }
+    if (thisParticlePosition.z < -1) 
+    {
+        thisParticlePosition.z = -1;
+        thisParticleVelocity.z = abs(thisParticleVelocity.z);
+    }
+    if (thisParticlePosition.z > 2) 
+    {
+        thisParticlePosition.z = 2;
+        thisParticleVelocity.z = -abs(thisParticleVelocity.z);
+    }
+
+    thisParticleVelocity *= (1 - DeltaTime * 0.1f);
+
+    AllParticles_Position[thisParticleIndex] = float4(thisParticlePosition, countOfOtherParticlesInRange);
+    AllParticles_Velocity[thisParticleIndex].xyz = thisParticleVelocity;
 }

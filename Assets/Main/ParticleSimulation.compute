@@ -2,6 +2,7 @@
 
 RWStructuredBuffer<float4> AllParticles_Position;
 RWStructuredBuffer<float4> AllParticles_Velocity;
+
 int AllParticles_Length;
 
 RWStructuredBuffer<uint> HashCodeToSortedParticleIndexes;
@@ -11,12 +12,11 @@ RWStructuredBuffer<uint> SortedParticleIndexes;
 
 
 
-
 uint ComparisonOffset;
 uint DirectionChangeStride;
 
 // help from https://github.com/hiroakioishi/UnityGPUBitonicSort/blob/master/GPUBitonicSort/Assets/BitonicSortCS/BitonicSort.compute
-// explained at https://en.wikipedia.org/wiki/Bitonic_sorter and  https://www.geeksforgeeks.org/bitonic-sort/
+// explained at https://en.wikipedia.org/wiki/Bitonic_sorter and https://www.geeksforgeeks.org/bitonic-sort/
 #pragma kernel BitonicSort
 [numthreads(64, 1, 1)]
 void BitonicSort(uint3 id : SV_DispatchThreadID)
@@ -52,8 +52,8 @@ void BitonicSort(uint3 id : SV_DispatchThreadID)
 [numthreads(64, 1, 1)]
 void HashCodeToSortedParticleIndexes_Initialize(uint3 id : SV_DispatchThreadID)
 {  
-    HashCodeToSortedParticleIndexes[id.x * 2 + 0] = 0xFFFFFFFF; // max uint
-    HashCodeToSortedParticleIndexes[id.x * 2 + 1] = 0;
+    HashCodeToSortedParticleIndexes[id.x * 2 + 0] = 0xFFFFFFFF; // particle start index, max uint
+    HashCodeToSortedParticleIndexes[id.x * 2 + 1] = 0; // num particles   
 }
 
 
@@ -99,7 +99,7 @@ float2 RaySphereIntersect(float3 r0, float3 rd, float3 s0, float sr)
 }
 
 #pragma kernel RaycastHitParticles
-[numthreads(64, 1, 1)]
+[numthreads(512, 1, 1)]
 void RaycastHitParticles(uint3 id : SV_DispatchThreadID)
 {  
     float3 particleWorldPos = AllParticles_Position[id.x].xyz;
@@ -122,12 +122,12 @@ float DeltaTime;
 int DragParticleIndex;
 float3 DragTargetWorldPosition;
 
-#pragma kernel Simulate
+#pragma kernel Simulate_AdjustVelocity
 [numthreads(64, 1, 1)]
-void Simulate(uint3 id : SV_DispatchThreadID)
+void Simulate_AdjustVelocity(uint3 id : SV_DispatchThreadID)
 {
     uint thisParticleIndex = id.x;
-    float3 thisParticlePosition =  AllParticles_Position[thisParticleIndex].xyz;
+    float3 thisParticlePosition = AllParticles_Position[thisParticleIndex].xyz;
     
     uint hashcodes[27];
     {
@@ -161,7 +161,7 @@ void Simulate(uint3 id : SV_DispatchThreadID)
                 const float interactionMaxRadius = 0.2;
                 if (len <= interactionMaxRadius)
                 {
-                    thisParticleForce += direction / len * 20 * (1.0 - min(1.0, len / interactionMaxRadius));
+                    thisParticleForce += direction / len * 30 * (1.0 - min(1.0, len / interactionMaxRadius));
                     countOfOtherParticlesInRange++;
                 }
             }
@@ -178,48 +178,41 @@ void Simulate(uint3 id : SV_DispatchThreadID)
 
     float3 thisParticleVelocity = AllParticles_Velocity[thisParticleIndex].xyz;
     
-    thisParticleForce.y -= 50 * DeltaTime;
-
+    thisParticleForce.y -= 20 * DeltaTime;
 
     thisParticleVelocity += thisParticleForce * DeltaTime;
-    thisParticlePosition += thisParticleVelocity * DeltaTime;
 
+    // clamp to 2D xy plane
     thisParticleVelocity.z = 0;    
     thisParticlePosition.z = 0;
     
+    float wallDamp = 0.9f;
+    // simulate walls
     if (thisParticlePosition.x < 0) 
-    {
-        thisParticlePosition.x = 0;
-        thisParticleVelocity.x = abs(thisParticleVelocity.x);
-    }
+        thisParticleVelocity.x = abs(thisParticleVelocity.x) * wallDamp;
     if (thisParticlePosition.x > 20) 
-    {
-        thisParticlePosition.x = 20;
-        thisParticleVelocity.x = -abs(thisParticleVelocity.x);
-    }
+        thisParticleVelocity.x = -abs(thisParticleVelocity.x) * wallDamp;
     if (thisParticlePosition.y < 0) 
-    {
-        thisParticlePosition.y = 0;
-        thisParticleVelocity.y = abs(thisParticleVelocity.y);
-    }
+        thisParticleVelocity.y = abs(thisParticleVelocity.y) * wallDamp;
     if (thisParticlePosition.y > 20) 
-    {
-        thisParticlePosition.y = 20;
-        thisParticleVelocity.y = -abs(thisParticleVelocity.y);
-    }
+        thisParticleVelocity.y = -abs(thisParticleVelocity.y) * wallDamp;
     if (thisParticlePosition.z < -1) 
-    {
-        thisParticlePosition.z = -1;
-        thisParticleVelocity.z = abs(thisParticleVelocity.z);
-    }
+        thisParticleVelocity.z = abs(thisParticleVelocity.z) * wallDamp;
     if (thisParticlePosition.z > 2) 
-    {
-        thisParticlePosition.z = 2;
-        thisParticleVelocity.z = -abs(thisParticleVelocity.z);
-    }
+        thisParticleVelocity.z = -abs(thisParticleVelocity.z) * wallDamp;
 
-    thisParticleVelocity *= (1 - DeltaTime * 0.1f);
+    float damping = (1 - DeltaTime * 0.2f);
+    thisParticleVelocity *= damping;
 
-    AllParticles_Position[thisParticleIndex] = float4(thisParticlePosition, countOfOtherParticlesInRange);
-    AllParticles_Velocity[thisParticleIndex].xyz = thisParticleVelocity;
+    AllParticles_Velocity[thisParticleIndex] = float4(thisParticleVelocity, countOfOtherParticlesInRange);
+}
+
+#pragma kernel Simulate_AdjustPosition
+[numthreads(64, 1, 1)]
+void Simulate_AdjustPosition(uint3 id : SV_DispatchThreadID)
+{
+    uint thisParticleIndex = id.x;
+    float3 thisParticlePosition = AllParticles_Position[thisParticleIndex].xyz;
+    
+    AllParticles_Position[thisParticleIndex].xyz = thisParticlePosition + AllParticles_Velocity[thisParticleIndex].xyz * DeltaTime;
 }

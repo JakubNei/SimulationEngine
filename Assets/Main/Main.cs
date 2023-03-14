@@ -31,6 +31,7 @@ public class Main : MonoBehaviour
 	// a way to find all particles with the same hashcode from hashcode
 	// [first particle index in SortedParticleIndexes, num particles] *  HashCodeToSortedParticleIndexes_Length
 	ComputeBuffer HashCodeToSortedParticleIndexes;
+
 	// maximum amount of voxel cells
 	int HashCodeToSortedParticleIndexes_Length = 1024 * 64;
 
@@ -209,6 +210,7 @@ public class Main : MonoBehaviour
 			}
 		}
 
+		// raycast find particle under mouse
 		{
 			if (!hitResultPool.TryDequeue(out var hitResult))
 				hitResult = new ComputeBuffer(emptyHitResult.Count, Marshal.SizeOf(typeof(int)) * 4, ComputeBufferType.Structured);
@@ -257,7 +259,7 @@ public class Main : MonoBehaviour
 			});
 		}
 
-		// drag
+		// drag particle
 		{
 			if (DraggingParticleIndex.HasValue)
 			{
@@ -308,7 +310,19 @@ public class Main : MonoBehaviour
 		}
 
 		{
-			var simulate = ConfigComputeShader.FindKernel("Simulate");
+			var simulate = ConfigComputeShader.FindKernel("Simulate_AdjustVelocity");
+			ConfigComputeShader.SetFloat("DeltaTime", 0.01f);
+			ConfigComputeShader.SetBuffer(simulate, "AllParticles_Position", AllParticles_Position);
+			ConfigComputeShader.SetBuffer(simulate, "AllParticles_Velocity", AllParticles_Velocity);
+			ConfigComputeShader.SetFloat("VoxelCellEdgeSize", VoxelCellEdgeSize);
+			ConfigComputeShader.SetBuffer(simulate, "HashCodeToSortedParticleIndexes", HashCodeToSortedParticleIndexes);
+			ConfigComputeShader.SetInt("HashCodeToSortedParticleIndexes_Length", HashCodeToSortedParticleIndexes_Length);
+			ConfigComputeShader.SetBuffer(simulate, "SortedParticleIndexes", SortedParticleIndexes);
+			ConfigComputeShader.Dispatch(simulate, AllParticles_Length / 64, 1, 1);
+		}
+
+		{
+			var simulate = ConfigComputeShader.FindKernel("Simulate_AdjustPosition");
 			ConfigComputeShader.SetFloat("DeltaTime", 0.01f);
 			ConfigComputeShader.SetBuffer(simulate, "AllParticles_Position", AllParticles_Position);
 			ConfigComputeShader.SetBuffer(simulate, "AllParticles_Velocity", AllParticles_Velocity);

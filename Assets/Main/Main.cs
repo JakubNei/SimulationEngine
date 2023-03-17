@@ -198,7 +198,7 @@ public class Main : MonoBehaviour
 			Start();
 		}
 
-		ClampTo2D = GUILayout.Toggle(ClampTo2D, "Clamp to 2D");
+		ClampTo2D = GUILayout.Toggle(ClampTo2D, "clamp to 2d");
 	}
 
 	// Update is called once per frame

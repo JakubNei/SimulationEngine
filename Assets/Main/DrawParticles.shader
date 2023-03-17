@@ -73,7 +73,7 @@ Shader "Unlit/DrawParticles"
 				float debugValue = velocityData.w;
 				float speed = saturate(length(velocityData.xyz) / 3.0f);
 				float neighbours = saturate(debugValue / 20.0f);
-				color = float3(speed, (1.5 - neighbours) * (1 - speed), neighbours);
+				color = float3(speed, (1.5 - neighbours) * (1.1 - speed), 0.1 + neighbours);
 			#endif
 
 			v.vertex.xyz = vertexPos;

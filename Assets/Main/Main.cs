@@ -73,7 +73,7 @@ public class Main : MonoBehaviour
 	void Start()
 	{
 		Random.InitState(0x6584f86);
-		
+
 		// ERROR: Thread group count is above the maximum allowed limit. Maximum allowed thread group count is 65535
 
 		// force 64 for num threads
@@ -411,13 +411,9 @@ public class Main : MonoBehaviour
 		material.SetFloat("Scale", particleRadius * 2);
 		material.SetFloat("VoxelCellEdgeSize", VoxelCellEdgeSize);
 
-		var bounds = new Bounds(Vector3.zero, new Vector3(float.MaxValue, float.MaxValue, float.MaxValue));
-		Graphics.DrawMeshInstancedIndirect(
-			ConfigParticleMesh, 0, material, bounds, IndirectArguments_DrawMeshParticles,
-			0, null, ShadowCastingMode.Off, false, 0, null, LightProbeUsage.Off);
-		// Graphics.DrawMeshInstancedIndirect(
-		// 	ConfigParticleMesh, 0, material, bounds, Gpu_IndirectArguments_DrawMeshParticles,
-		// 	0, null, ShadowCastingMode.On, true, 0, null, LightProbeUsage.BlendProbes);
+		var bounds = new Bounds(Vector3.zero, Vector3.one * 1000);
+		//Graphics.DrawMeshInstancedIndirect(ConfigParticleMesh, 0, material, bounds, IndirectArguments_DrawMeshParticles, 0, null, ShadowCastingMode.Off, false, 0, null, LightProbeUsage.Off);
+		Graphics.DrawMeshInstancedIndirect(ConfigParticleMesh, 0, material, bounds, IndirectArguments_DrawMeshParticles, 0, null, ShadowCastingMode.On, true, 0, null, LightProbeUsage.BlendProbes);
 	}
 
 	void ReadbackParticlePosition(uint particleIndex, System.Action<Vector3> resultCallback)

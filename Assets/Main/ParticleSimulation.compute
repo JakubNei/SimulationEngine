@@ -1,9 +1,10 @@
 #include "Common.cginc"
 
+int AllParticles_Length;
 RWStructuredBuffer<float4> AllParticles_Position;
 RWStructuredBuffer<float4> AllParticles_Velocity;
+RWStructuredBuffer<float4> AllParticles_Rotation;
 
-int AllParticles_Length;
 
 RWStructuredBuffer<uint> HashCodeToSortedParticleIndexes;
 

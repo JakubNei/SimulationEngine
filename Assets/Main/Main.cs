@@ -21,6 +21,7 @@ public class Main : MonoBehaviour
 
 	ComputeBuffer AllParticles_Position;
 	ComputeBuffer AllParticles_Velocity;
+	ComputeBuffer AllParticles_Rotation;
 
 	// index count per instance, instance count, start index location, base vertex location, start instance location
 	ComputeBuffer IndirectArguments_DrawMeshParticles;
@@ -117,6 +118,20 @@ public class Main : MonoBehaviour
 		}
 		AllParticles_Velocity.SetData(velocities);
 
+
+		AllParticles_Rotation = new ComputeBuffer(AllParticles_Length, Marshal.SizeOf(typeof(float)) * 4, ComputeBufferType.Structured);
+		var rotations = new List<float>(AllParticles_Length * 4);
+		for (int i = 0; i < AllParticles_Length; i++)
+		{
+			var v = Random.rotation;
+			rotations.Add(v.x);
+			rotations.Add(v.y);
+			rotations.Add(v.z);
+			rotations.Add(v.w);
+		}
+		AllParticles_Rotation.SetData(rotations);
+
+
 		IndirectArguments_DrawMeshParticles = new ComputeBuffer(5, sizeof(int), ComputeBufferType.IndirectArguments);
 		IndirectArguments_DrawMeshParticles.SetData(new uint[] { ConfigParticleMesh.GetIndexCount(0), (uint)AllParticles_Length, ConfigParticleMesh.GetIndexStart(0), ConfigParticleMesh.GetBaseVertex(0), 0 });
 
@@ -179,6 +194,7 @@ public class Main : MonoBehaviour
 			ConfigComputeShader.SetInt("HashCodeToSortedParticleIndexes_Length", HashCodeToSortedParticleIndexes_Length);
 			ConfigComputeShader.SetBuffer(bitonicSort, "AllParticles_Position", AllParticles_Position);
 			ConfigComputeShader.SetBuffer(bitonicSort, "AllParticles_Velocity", AllParticles_Velocity);
+			ConfigComputeShader.SetBuffer(bitonicSort, "AllParticles_Rotation", AllParticles_Rotation);
 			ConfigComputeShader.SetBuffer(bitonicSort, "SortedParticleIndexes", SortedParticleIndexes);
 			for (int DirectionChangeStride = 2; DirectionChangeStride <= AllParticles_Length; DirectionChangeStride *= 2)
 			{
@@ -314,6 +330,7 @@ public class Main : MonoBehaviour
 			ConfigComputeShader.SetFloat("DeltaTime", 0.01f);
 			ConfigComputeShader.SetBuffer(simulate, "AllParticles_Position", AllParticles_Position);
 			ConfigComputeShader.SetBuffer(simulate, "AllParticles_Velocity", AllParticles_Velocity);
+			ConfigComputeShader.SetBuffer(simulate, "AllParticles_Rotation", AllParticles_Rotation);
 			ConfigComputeShader.SetFloat("VoxelCellEdgeSize", VoxelCellEdgeSize);
 			ConfigComputeShader.SetBuffer(simulate, "HashCodeToSortedParticleIndexes", HashCodeToSortedParticleIndexes);
 			ConfigComputeShader.SetInt("HashCodeToSortedParticleIndexes_Length", HashCodeToSortedParticleIndexes_Length);
@@ -343,6 +360,7 @@ public class Main : MonoBehaviour
 		material.SetInt("AllParticles_Length", AllParticles_Length);
 		material.SetBuffer("AllParticles_Position", AllParticles_Position);
 		material.SetBuffer("AllParticles_Velocity", AllParticles_Velocity);
+		material.SetBuffer("AllParticles_Rotation", AllParticles_Rotation);
 		material.SetBuffer("HashCodeToSortedParticleIndexes", HashCodeToSortedParticleIndexes);
 		material.SetInt("HashCodeToSortedParticleIndexes_Length", HashCodeToSortedParticleIndexes_Length);
 		material.SetFloat("Scale", particleRadius * 2);

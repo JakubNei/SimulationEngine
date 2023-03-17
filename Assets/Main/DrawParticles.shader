@@ -128,9 +128,12 @@ Shader "Unlit/DrawParticles"
 
 			#include "UnityCG.cginc"
 
+			#include "MatrixQuaternion.cginc"
+
 			int AllParticles_Length;
 			StructuredBuffer<float4> AllParticles_Position;
 			StructuredBuffer<float4> AllParticles_Velocity;
+			StructuredBuffer<float4> AllParticles_Rotation;
 			float Scale;
 
 			struct appdata
@@ -149,13 +152,24 @@ Shader "Unlit/DrawParticles"
 			{
 				float4 positionData = AllParticles_Position[instanceID];
 				float4 velocityData = AllParticles_Velocity[instanceID];
-				float debugValue = velocityData.w;
+				float4 rotation = AllParticles_Rotation[instanceID];
+				
+				float4x4 modelMatrix = quaternion_to_matrix(rotation);
+				float3 worldPosition = mul(modelMatrix, v.vertex * Scale) + positionData.xyz;
+				float3 worldNormal = mul(modelMatrix, v.normal);
+
+				float3 color;	
+				{
+					float debugValue = velocityData.w;
+					float speed = saturate(length(velocityData.xyz) / 3.0f);
+					float neighbours = saturate(debugValue / 20.0f);
+					color = float3(speed, (1.5 - neighbours) * (1 - speed), neighbours);
+					color *= lerp(0.1, 1, 0.1 + max(0, dot(worldNormal, float3(0,1,0))));
+				}
+
 				v2f o;
-				o.pos = mul(UNITY_MATRIX_VP, float4(v.vertex.xyz * Scale + positionData.xyz, 1.0f));
-				float speed = saturate(length(velocityData.xyz) / 3.0f);
-				float neighbours = saturate(debugValue / 20.0f);
-				o.color = float3(speed, (1.5 - neighbours) * (1 - speed), neighbours);
-				o.color *= lerp(0.1, 1, 0.1 + max(0, dot(v.normal, float3(0,1,0))));
+				o.pos = mul(UNITY_MATRIX_VP, float4(worldPosition, 1.0f));
+				o.color = color;
 				return o;
 			}
 

@@ -32,8 +32,8 @@ public class MouseLook : MonoBehaviour
 			moveDelta *= 4;
 		moveDelta *= Time.deltaTime;
 		mouseAbsolute += mouseDelta;
-		if (configMouseClampInDegrees.x <= 360)
-			mouseAbsolute.x = Mathf.Clamp(mouseAbsolute.x, -configMouseClampInDegrees.x * 0.5f, configMouseClampInDegrees.x * 0.5f);
+		// if (configMouseClampInDegrees.x <= 360)
+		// 	mouseAbsolute.x = Mathf.Clamp(mouseAbsolute.x, -configMouseClampInDegrees.x * 0.5f, configMouseClampInDegrees.x * 0.5f);
 		if (configMouseClampInDegrees.y <= 360)
 			mouseAbsolute.y = Mathf.Clamp(mouseAbsolute.y, -configMouseClampInDegrees.y * 0.5f, configMouseClampInDegrees.y * 0.5f);
 

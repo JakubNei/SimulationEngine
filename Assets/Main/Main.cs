@@ -14,6 +14,9 @@ public class Main : MonoBehaviour
 	[SerializeField]
 	ComputeShader ConfigComputeShader;
 
+	[SerializeField]
+	GameObject ConfigBoundingPlanes;
+
 
 	//int AllParticles_Length = 128 * 128 * 64; // 1 million
 	//int AllParticles_Length = 1024 * 64; // 65k
@@ -33,6 +36,11 @@ public class Main : MonoBehaviour
 	// [first particle index in SortedParticleIndexes, num particles] *  HashCodeToSortedParticleIndexes_Length
 	ComputeBuffer HashCodeToSortedParticleIndexes;
 
+
+	int BoundingPlanes_Length;
+	// [normal x, normal y, normal z, distance] * BoundingPlanes_Length
+	ComputeBuffer BoundingPlanes_NormalDistance; 
+
 	// maximum amount of voxel cells
 	int HashCodeToSortedParticleIndexes_Length = 1024 * 64;
 
@@ -40,6 +48,8 @@ public class Main : MonoBehaviour
 	const float particleRadius = 0.1f;
 	const float interactionMaxRadius = particleRadius * 2;
 	float VoxelCellEdgeSize = interactionMaxRadius;
+
+	public bool ClampTo2D = true;
 
 	struct CursorHitResult
 	{
@@ -62,6 +72,8 @@ public class Main : MonoBehaviour
 	// Start is called before the first frame update
 	void Start()
 	{
+		Random.InitState(0x6584f86);
+		
 		// ERROR: Thread group count is above the maximum allowed limit. Maximum allowed thread group count is 65535
 
 		// force 64 for num threads
@@ -86,14 +98,16 @@ public class Main : MonoBehaviour
 		{
 			var countOnEdge = Mathf.CeilToInt(Mathf.Pow(AllParticles_Length, 1 / 2.0f));
 			var gridSizeOnEdge = interactionMaxRadius * countOnEdge;
-			Random.InitState(0x6584f86);
 			int i = 0;
 			for (int x = 0; i < AllParticles_Length && x < countOnEdge; x++)
 				for (int y = 0; i < AllParticles_Length && y < countOnEdge; y++)
 				{
 					var p = new Vector3(x * interactionMaxRadius, y * interactionMaxRadius, 0);
 					p += Random.onUnitSphere * interactionMaxRadius;
-					p.z = 0.1f;
+					if (ClampTo2D)
+						p.z = 0;
+					else
+						p.z *= 0.1f;
 
 					positions.Add(p.x);
 					positions.Add(p.y);
@@ -183,11 +197,37 @@ public class Main : MonoBehaviour
 			OnDestroy();
 			Start();
 		}
+
+		ClampTo2D = GUILayout.Toggle(ClampTo2D, "Clamp to 2D");
 	}
 
 	// Update is called once per frame
 	void Update()
 	{
+		// update bounding planes to compute buffer, so we can change them during runtime in editor
+		if (ConfigBoundingPlanes != null)
+		{
+			var childCount = ConfigBoundingPlanes.transform.childCount;
+			var boundingPlanes = new List<float>(childCount * 4);
+			for (int childIndex = 0; childIndex < childCount; childIndex++)
+			{
+				var child = ConfigBoundingPlanes.transform.GetChild(childIndex);
+				var plane = new Plane(child.up, child.position);
+				boundingPlanes.Add(plane.normal.x);
+				boundingPlanes.Add(plane.normal.y);
+				boundingPlanes.Add(plane.normal.z);
+				boundingPlanes.Add(plane.distance);
+			}
+			if (BoundingPlanes_Length != childCount)
+			{
+				BoundingPlanes_Length = childCount;
+				if (BoundingPlanes_NormalDistance != null)
+					BoundingPlanes_NormalDistance.Release();
+				BoundingPlanes_NormalDistance = new ComputeBuffer(BoundingPlanes_Length, Marshal.SizeOf(typeof(float)) * 4, ComputeBufferType.Structured);
+			}
+			BoundingPlanes_NormalDistance.SetData(boundingPlanes);
+		}
+
 		{
 			var bitonicSort = ConfigComputeShader.FindKernel("BitonicSort");
 			ConfigComputeShader.SetFloat("VoxelCellEdgeSize", VoxelCellEdgeSize);
@@ -328,15 +368,19 @@ public class Main : MonoBehaviour
 		{
 			var simulate = ConfigComputeShader.FindKernel("Simulate_AdjustVelocity");
 			ConfigComputeShader.SetFloat("DeltaTime", 0.01f);
+			ConfigComputeShader.SetFloat("ParticleRadius", particleRadius);
 			ConfigComputeShader.SetBuffer(simulate, "AllParticles_Position", AllParticles_Position);
 			ConfigComputeShader.SetBuffer(simulate, "AllParticles_Velocity", AllParticles_Velocity);
 			ConfigComputeShader.SetBuffer(simulate, "AllParticles_Rotation", AllParticles_Rotation);
+			ConfigComputeShader.SetInt("BoundingPlanes_Length", BoundingPlanes_Length);
+			ConfigComputeShader.SetBuffer(simulate, "BoundingPlanes_NormalDistance", BoundingPlanes_NormalDistance);
 			ConfigComputeShader.SetFloat("VoxelCellEdgeSize", VoxelCellEdgeSize);
 			ConfigComputeShader.SetBuffer(simulate, "HashCodeToSortedParticleIndexes", HashCodeToSortedParticleIndexes);
 			ConfigComputeShader.SetInt("HashCodeToSortedParticleIndexes_Length", HashCodeToSortedParticleIndexes_Length);
 			ConfigComputeShader.SetBuffer(simulate, "SortedParticleIndexes", SortedParticleIndexes);
+			ConfigComputeShader.SetBool("ClampTo2D", ClampTo2D);
 			ConfigComputeShader.Dispatch(simulate, AllParticles_Length / 64, 1, 1);
-		}
+	}
 
 		{
 			var simulate = ConfigComputeShader.FindKernel("Simulate_AdjustPosition");
@@ -347,6 +391,7 @@ public class Main : MonoBehaviour
 			ConfigComputeShader.SetBuffer(simulate, "HashCodeToSortedParticleIndexes", HashCodeToSortedParticleIndexes);
 			ConfigComputeShader.SetInt("HashCodeToSortedParticleIndexes_Length", HashCodeToSortedParticleIndexes_Length);
 			ConfigComputeShader.SetBuffer(simulate, "SortedParticleIndexes", SortedParticleIndexes);
+			ConfigComputeShader.SetBool("ClampTo2D", ClampTo2D);
 			ConfigComputeShader.Dispatch(simulate, AllParticles_Length / 64, 1, 1);
 		}
 

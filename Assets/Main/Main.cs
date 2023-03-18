@@ -259,6 +259,7 @@ public class Main : MonoBehaviour
 				var HashCodeToSortedParticleIndexes_Bin = ConfigComputeShader.FindKernel("HashCodeToSortedParticleIndexes_Bin");
 				ConfigComputeShader.SetBuffer(HashCodeToSortedParticleIndexes_Bin, "AllParticles_Position", AllParticles_Position);
 				ConfigComputeShader.SetFloat("VoxelCellEdgeSize", VoxelCellEdgeSize);
+				ConfigComputeShader.SetInt("AllParticles_Length", AllParticles_Length);
 				ConfigComputeShader.SetBuffer(HashCodeToSortedParticleIndexes_Bin, "HashCodeToSortedParticleIndexes", HashCodeToSortedParticleIndexes);
 				ConfigComputeShader.SetInt("HashCodeToSortedParticleIndexes_Length", HashCodeToSortedParticleIndexes_Length);
 				ConfigComputeShader.SetBuffer(HashCodeToSortedParticleIndexes_Bin, "SortedParticleIndexes", SortedParticleIndexes);

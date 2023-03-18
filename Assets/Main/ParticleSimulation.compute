@@ -11,7 +11,7 @@ StructuredBuffer<float4> BoundingPlanes_NormalDistance;
 
 float ParticleRadius;
 
-RWStructuredBuffer<uint> HashCodeToSortedParticleIndexes;
+RWStructuredBuffer<int> HashCodeToSortedParticleIndexes;
 
 RWStructuredBuffer<uint> SortedParticleIndexes;
 
@@ -58,22 +58,34 @@ void BitonicSort(uint3 id : SV_DispatchThreadID)
 [numthreads(64, 1, 1)]
 void HashCodeToSortedParticleIndexes_Initialize(uint3 id : SV_DispatchThreadID)
 {  
-    HashCodeToSortedParticleIndexes[id.x * 2 + 0] = 0xFFFFFFFF; // particle start index, max uint
-    HashCodeToSortedParticleIndexes[id.x * 2 + 1] = 0; // num particles   
+    HashCodeToSortedParticleIndexes[id.x * 2 + 0] = -1; // particle start index
+    HashCodeToSortedParticleIndexes[id.x * 2 + 1] = -1; // particle end index 
 }
 
 
 
-
+// idea from https://developer.download.nvidia.com/assets/cuda/files/particles.pdf
 #pragma kernel HashCodeToSortedParticleIndexes_Bin
 [numthreads(64, 1, 1)]
 void HashCodeToSortedParticleIndexes_Bin(uint3 id : SV_DispatchThreadID)
 {  
-    uint index = id.x;
-    uint hashcode = GetHashCode(AllParticles_Position[SortedParticleIndexes[index]].xyz);
+    uint index1 = id.x + 0;
+    uint index2 = id.x + 1;
+    if (index2 >= AllParticles_Length) return;
 
-    InterlockedMin(HashCodeToSortedParticleIndexes[hashcode * 2 + 0], index); // particle start index
-    InterlockedAdd(HashCodeToSortedParticleIndexes[hashcode * 2 + 1], 1); // num particles    
+    uint hashcode1 = GetHashCode(AllParticles_Position[SortedParticleIndexes[index1]].xyz);
+    uint hashcode2 = GetHashCode(AllParticles_Position[SortedParticleIndexes[index2]].xyz);
+
+    if (hashcode1 != hashcode2)
+    {
+        HashCodeToSortedParticleIndexes[hashcode2 * 2 + 0] = index2; // particle start index
+        HashCodeToSortedParticleIndexes[hashcode1 * 2 + 1] = index1; // particle end index
+    }
+
+    if (index1 == 0) // first particle
+        HashCodeToSortedParticleIndexes[hashcode1 * 2 + 0] = index1; // particle start index
+    if (index2 == AllParticles_Length - 1) // last particle
+        HashCodeToSortedParticleIndexes[hashcode2 * 2 + 1] = index2; // particle end index
 }
 
 
@@ -151,13 +163,15 @@ void Simulate_AdjustVelocity(uint3 id : SV_DispatchThreadID)
 
     for (int h = 0; h < 27; h++)
     {
-        uint voxelCellFirstParticleIndex = HashCodeToSortedParticleIndexes[hashcodes[h] * 2 + 0]; 
-        uint voxelCellTotalNumParticles = HashCodeToSortedParticleIndexes[hashcodes[h] * 2 + 1]; 
+        uint sortedParticlesStartIndex = HashCodeToSortedParticleIndexes[hashcodes[h] * 2 + 0];
+        uint sortedParticlesEndIndex = HashCodeToSortedParticleIndexes[hashcodes[h] * 2 + 1]; 
+        if (sortedParticlesEndIndex == -1 || sortedParticlesStartIndex == -1) continue;
 
-        uint otherParticleHashcodeIndex = voxelCellFirstParticleIndex;
-        for (uint p = 0; p < voxelCellTotalNumParticles; p++)
+        for (uint sortedParticlesIndex = sortedParticlesStartIndex;
+            sortedParticlesIndex <= sortedParticlesEndIndex; 
+            sortedParticlesIndex++)
         {
-            uint otherParticleIndex = SortedParticleIndexes[otherParticleHashcodeIndex];
+            uint otherParticleIndex = SortedParticleIndexes[sortedParticlesIndex];
             if (otherParticleIndex != thisParticleIndex)
             {
                 float3 otherParticlePosition = AllParticles_Position[otherParticleIndex].xyz;
@@ -170,7 +184,6 @@ void Simulate_AdjustVelocity(uint3 id : SV_DispatchThreadID)
                     countOfOtherParticlesInRange++;
                 }
             }
-            otherParticleHashcodeIndex++;
         }
     }
 

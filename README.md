@@ -30,7 +30,6 @@ zkusit implementovat electron-forcefield (eFF) ... ten je uz trochu kvantovy ...
 
 # Optimizations
 - [Fetch from cells only relevant for particle octant][A More Efficient Parallel Method For Neighbour Search Using CUDA]
-- [Botnic sort Leverage group shared memory][Bitonic sort example Unity compute shader]
   
 ## Other
 [Consider using OpenCL in Unity][Using OpenCL in Unity]

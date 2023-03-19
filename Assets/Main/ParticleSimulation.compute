@@ -34,9 +34,9 @@ uint DirectionChangeStride;
 
 // help from https://github.com/hiroakioishi/UnityGPUBitonicSort/blob/master/GPUBitonicSort/Assets/BitonicSortCS/BitonicSort.compute
 // explained at https://en.wikipedia.org/wiki/Bitonic_sorter and https://www.geeksforgeeks.org/bitonic-sort/
-#pragma kernel BitonicSort_Sort_Over512
+#pragma kernel BitonicSort_Sort
 [numthreads(64, 1, 1)]
-void BitonicSort_Sort_Over512(uint3 id : SV_DispatchThreadID)
+void BitonicSort_Sort(uint3 id : SV_DispatchThreadID)
 {
     int index0 = id.x & ~ComparisonOffset; // index top
 	int index1 = id.x | ComparisonOffset; // index bottom
@@ -56,22 +56,24 @@ void BitonicSort_Sort_Over512(uint3 id : SV_DispatchThreadID)
 
 #define BITONIC_BLOCK_SIZE 512
 groupshared uint2 GroupSharedData[BITONIC_BLOCK_SIZE];
-#pragma kernel BitonicSort_Sort_UnderOrEqualTo512
+#pragma kernel BitonicSort_Sort_GroupShared
 [numthreads(BITONIC_BLOCK_SIZE, 1, 1)]
-void BitonicSort_Sort_UnderOrEqualTo512(uint3 Gid  : SV_GroupID, 
+void BitonicSort_Sort_GroupShared(uint3 Gid  : SV_GroupID, 
 				 uint3 DTid : SV_DispatchThreadID, 
 				 uint3 GTid : SV_GroupThreadID, 
 				 uint  GI   : SV_GroupIndex)
 {
-	// Load shared data
+    // Load shared data
 	GroupSharedData[GI] = SortedParticleIndexes[DTid.x];
 	GroupMemoryBarrierWithGroupSync();
 
 	// Sort the shared data
 	for (uint comparisonOffset = ComparisonOffset; comparisonOffset > 0; comparisonOffset >>= 1)
 	{
-		uint2 result = (
-            (GroupSharedData[GI & ~comparisonOffset].y <= GroupSharedData[GI | comparisonOffset].y) == (bool)(DirectionChangeStride & DTid.x)) ? 
+        uint hashcode0 = GroupSharedData[GI & ~comparisonOffset].y;
+        uint hashcode1 = GroupSharedData[GI | comparisonOffset].y;
+		uint2 result = 
+            ((hashcode0 <= hashcode1) == (bool)(DirectionChangeStride & DTid.x)) ? 
             GroupSharedData[GI ^ comparisonOffset] : 
             GroupSharedData[GI];
 		GroupMemoryBarrierWithGroupSync();
@@ -91,8 +93,6 @@ void HashCodeToSortedParticleIndexes_Initialize(uint3 id : SV_DispatchThreadID)
 {  
     HashCodeToSortedParticleIndexes[id.x] = -1;
 }
-
-
 
 // idea from https://developer.download.nvidia.com/assets/cuda/files/particles.pdf
 #pragma kernel HashCodeToSortedParticleIndexes_Bin
@@ -183,7 +183,7 @@ void Simulate_AdjustVelocity(uint3 id : SV_DispatchThreadID)
             for (int y = -1; y <= 1; y++)
                 for (int z = -1; z <= 1; z++)
                 {
-                    hashcodes[i] = GetHashCode(thisParticlePosition + int3(x,y,z) * VoxelCellEdgeSize);
+                    hashcodes[i] = GetHashCode(thisParticlePosition + float3(x,y,z) * VoxelCellEdgeSize);
                     i++;
                 }
     }

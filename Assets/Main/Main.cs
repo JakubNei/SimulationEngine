@@ -9,6 +9,8 @@ public class Main : MonoBehaviour
 	[SerializeField]
 	Material ConfigParticlesMaterial;
 	[SerializeField]
+	Material ConfigParticlesMaterialWithShadows;
+	[SerializeField]
 	Mesh ConfigParticleMesh;
 
 	[SerializeField]
@@ -49,6 +51,7 @@ public class Main : MonoBehaviour
 	float VoxelCellEdgeSize = interactionMaxRadius;
 
 	public bool ClampTo2D = true;
+	public bool DrawWithShadows = true;
 
 	struct CursorHitResult
 	{
@@ -190,6 +193,7 @@ public class Main : MonoBehaviour
 		}
 
 		ClampTo2D = GUILayout.Toggle(ClampTo2D, "clamp to 2d");
+		DrawWithShadows = GUILayout.Toggle(DrawWithShadows, "shadows");		
 	}
 
 	// Update is called once per frame
@@ -233,24 +237,23 @@ public class Main : MonoBehaviour
 			{
 				for (int ComparisonOffset = DirectionChangeStride / 2; true; ComparisonOffset /= 2)
 				{
-					//if (ComparisonOffset > 512)
+					if (ComparisonOffset > 256)
 					{
-						var bitonicSort = ConfigComputeShader.FindKernel("BitonicSort_Sort_Over512");
+						var bitonicSort = ConfigComputeShader.FindKernel("BitonicSort_Sort");
 						ConfigComputeShader.SetBuffer(bitonicSort, "SortedParticleIndexes", SortedParticleIndexes);
 						ConfigComputeShader.SetInt("DirectionChangeStride", DirectionChangeStride);
 						ConfigComputeShader.SetInt("ComparisonOffset", ComparisonOffset);
 						ConfigComputeShader.Dispatch(bitonicSort, AllParticles_Length / 64, 1, 1);
-						if (ComparisonOffset == 1) break;
 					}
-					// else
-					// {
-					// 	var bitonicSort = ConfigComputeShader.FindKernel("BitonicSort_Sort_UnderOrEqualTo512");
-					// 	ConfigComputeShader.SetBuffer(bitonicSort, "SortedParticleIndexes", SortedParticleIndexes);
-					// 	ConfigComputeShader.SetInt("DirectionChangeStride", DirectionChangeStride);
-					// 	ConfigComputeShader.SetInt("ComparisonOffset", ComparisonOffset);
-					// 	ConfigComputeShader.Dispatch(bitonicSort, AllParticles_Length / 512, 1, 1);
-					// 	break;
-					// }
+					else
+					{
+						var bitonicSort = ConfigComputeShader.FindKernel("BitonicSort_Sort_GroupShared");
+						ConfigComputeShader.SetBuffer(bitonicSort, "SortedParticleIndexes", SortedParticleIndexes);
+						ConfigComputeShader.SetInt("DirectionChangeStride", DirectionChangeStride);
+						ConfigComputeShader.SetInt("ComparisonOffset", ComparisonOffset);
+						ConfigComputeShader.Dispatch(bitonicSort, AllParticles_Length / 512, 1, 1);
+						break;
+					}
 				}
 			}
 		}
@@ -408,7 +411,7 @@ public class Main : MonoBehaviour
 
 	void DrawParticles()
 	{
-		var material = ConfigParticlesMaterial;
+		var material = DrawWithShadows ? ConfigParticlesMaterialWithShadows : ConfigParticlesMaterial;	
 
 		material.SetInt("AllParticles_Length", AllParticles_Length);
 		material.SetBuffer("AllParticles_Position", AllParticles_Position);
@@ -420,8 +423,10 @@ public class Main : MonoBehaviour
 		material.SetFloat("VoxelCellEdgeSize", VoxelCellEdgeSize);
 
 		var bounds = new Bounds(Vector3.zero, Vector3.one * 1000);
-		//Graphics.DrawMeshInstancedIndirect(ConfigParticleMesh, 0, material, bounds, IndirectArguments_DrawMeshParticles, 0, null, ShadowCastingMode.Off, false, 0, null, LightProbeUsage.Off);
-		Graphics.DrawMeshInstancedIndirect(ConfigParticleMesh, 0, material, bounds, IndirectArguments_DrawMeshParticles, 0, null, ShadowCastingMode.On, true, 0, null, LightProbeUsage.BlendProbes);
+		if (DrawWithShadows)
+			Graphics.DrawMeshInstancedIndirect(ConfigParticleMesh, 0, material, bounds, IndirectArguments_DrawMeshParticles, 0, null, ShadowCastingMode.On, true, 0, null, LightProbeUsage.BlendProbes);
+		else
+			Graphics.DrawMeshInstancedIndirect(ConfigParticleMesh, 0, material, bounds, IndirectArguments_DrawMeshParticles, 0, null, ShadowCastingMode.Off, false, 0, null, LightProbeUsage.Off);
 	}
 
 	void ReadbackParticlePosition(uint particleIndex, System.Action<Vector3> resultCallback)

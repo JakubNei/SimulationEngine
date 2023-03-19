@@ -17,7 +17,6 @@ public class Main : MonoBehaviour
 	[SerializeField]
 	GameObject ConfigBoundingPlanes;
 
-
 	//int AllParticles_Length = 128 * 128 * 64; // 1 million
 	//int AllParticles_Length = 1024 * 64; // 65k
 	int AllParticles_Length = 2 * 64 * 64;
@@ -29,15 +28,15 @@ public class Main : MonoBehaviour
 	// index count per instance, instance count, start index location, base vertex location, start instance location
 	ComputeBuffer IndirectArguments_DrawMeshParticles;
 
-	// indexes of particles in AllParticles_Position, sorted by their position hashcode
+	// pairs of [index to in AllParticles_Position, position hashcode], sorted by their position hashcode
 	ComputeBuffer SortedParticleIndexes;
 
 	// a way to find all particles with the same hashcode from hashcode
 	// [first particle index in SortedParticleIndexes, num particles] *  HashCodeToSortedParticleIndexes_Length
 	ComputeBuffer HashCodeToSortedParticleIndexes;
 
-
 	int BoundingPlanes_Length;
+
 	// [normal x, normal y, normal z, distance] * BoundingPlanes_Length
 	ComputeBuffer BoundingPlanes_NormalDistance; 
 
@@ -82,15 +81,7 @@ public class Main : MonoBehaviour
 
 		HashCodeToSortedParticleIndexes = new ComputeBuffer(HashCodeToSortedParticleIndexes_Length * 2, Marshal.SizeOf(typeof(uint)), ComputeBufferType.Structured);
 
-		SortedParticleIndexes = new ComputeBuffer(AllParticles_Length, Marshal.SizeOf(typeof(uint)), ComputeBufferType.Structured);
-		{
-			var indexes = new List<uint>(AllParticles_Length);
-			for (uint i = 0; i < AllParticles_Length; i++)
-			{
-				indexes.Add(i);
-			}
-			SortedParticleIndexes.SetData(indexes);
-		}
+		SortedParticleIndexes = new ComputeBuffer(AllParticles_Length, Marshal.SizeOf(typeof(uint)) * 2, ComputeBufferType.Structured);
 
 		AllParticles_Position = new ComputeBuffer(AllParticles_Length, Marshal.SizeOf(typeof(float)) * 4, ComputeBufferType.Structured);
 		var positions = new List<float>(AllParticles_Length * 3);
@@ -229,41 +220,57 @@ public class Main : MonoBehaviour
 		}
 
 		{
-			var bitonicSort = ConfigComputeShader.FindKernel("BitonicSort");
+			var bitonicSort = ConfigComputeShader.FindKernel("BitonicSort_Initialize");
 			ConfigComputeShader.SetFloat("VoxelCellEdgeSize", VoxelCellEdgeSize);
 			ConfigComputeShader.SetInt("HashCodeToSortedParticleIndexes_Length", HashCodeToSortedParticleIndexes_Length);
 			ConfigComputeShader.SetBuffer(bitonicSort, "AllParticles_Position", AllParticles_Position);
-			ConfigComputeShader.SetBuffer(bitonicSort, "AllParticles_Velocity", AllParticles_Velocity);
-			ConfigComputeShader.SetBuffer(bitonicSort, "AllParticles_Rotation", AllParticles_Rotation);
 			ConfigComputeShader.SetBuffer(bitonicSort, "SortedParticleIndexes", SortedParticleIndexes);
+			ConfigComputeShader.Dispatch(bitonicSort, AllParticles_Length / 64, 1, 1);
+		}
+
+		{
 			for (int DirectionChangeStride = 2; DirectionChangeStride <= AllParticles_Length; DirectionChangeStride *= 2)
 			{
 				for (int ComparisonOffset = DirectionChangeStride / 2; true; ComparisonOffset /= 2)
 				{
-					ConfigComputeShader.SetInt("DirectionChangeStride", DirectionChangeStride);
-					ConfigComputeShader.SetInt("ComparisonOffset", ComparisonOffset);
-					ConfigComputeShader.Dispatch(bitonicSort, AllParticles_Length / 64, 1, 1);
-					if (ComparisonOffset == 1) break;
+					//if (ComparisonOffset > 512)
+					{
+						var bitonicSort = ConfigComputeShader.FindKernel("BitonicSort_Sort_Over512");
+						ConfigComputeShader.SetBuffer(bitonicSort, "SortedParticleIndexes", SortedParticleIndexes);
+						ConfigComputeShader.SetInt("DirectionChangeStride", DirectionChangeStride);
+						ConfigComputeShader.SetInt("ComparisonOffset", ComparisonOffset);
+						ConfigComputeShader.Dispatch(bitonicSort, AllParticles_Length / 64, 1, 1);
+						if (ComparisonOffset == 1) break;
+					}
+					// else
+					// {
+					// 	var bitonicSort = ConfigComputeShader.FindKernel("BitonicSort_Sort_UnderOrEqualTo512");
+					// 	ConfigComputeShader.SetBuffer(bitonicSort, "SortedParticleIndexes", SortedParticleIndexes);
+					// 	ConfigComputeShader.SetInt("DirectionChangeStride", DirectionChangeStride);
+					// 	ConfigComputeShader.SetInt("ComparisonOffset", ComparisonOffset);
+					// 	ConfigComputeShader.Dispatch(bitonicSort, AllParticles_Length / 512, 1, 1);
+					// 	break;
+					// }
 				}
 			}
 		}
 
 		{
 			{
-				var HashCodeToSortedParticleIndexes_Initialize = ConfigComputeShader.FindKernel("HashCodeToSortedParticleIndexes_Initialize");
-				ConfigComputeShader.SetBuffer(HashCodeToSortedParticleIndexes_Initialize, "HashCodeToSortedParticleIndexes", HashCodeToSortedParticleIndexes);
-				ConfigComputeShader.Dispatch(HashCodeToSortedParticleIndexes_Initialize, HashCodeToSortedParticleIndexes_Length / 64, 1, 1);
+				var hashCodeToSortedParticleIndexes_Initialize = ConfigComputeShader.FindKernel("HashCodeToSortedParticleIndexes_Initialize");
+				ConfigComputeShader.SetBuffer(hashCodeToSortedParticleIndexes_Initialize, "HashCodeToSortedParticleIndexes", HashCodeToSortedParticleIndexes);
+				ConfigComputeShader.Dispatch(hashCodeToSortedParticleIndexes_Initialize, HashCodeToSortedParticleIndexes_Length * 2 / 64, 1, 1);
 			}
 
 			{
-				var HashCodeToSortedParticleIndexes_Bin = ConfigComputeShader.FindKernel("HashCodeToSortedParticleIndexes_Bin");
-				ConfigComputeShader.SetBuffer(HashCodeToSortedParticleIndexes_Bin, "AllParticles_Position", AllParticles_Position);
+				var hashCodeToSortedParticleIndexes_Bin = ConfigComputeShader.FindKernel("HashCodeToSortedParticleIndexes_Bin");
+				ConfigComputeShader.SetBuffer(hashCodeToSortedParticleIndexes_Bin, "AllParticles_Position", AllParticles_Position);
 				ConfigComputeShader.SetFloat("VoxelCellEdgeSize", VoxelCellEdgeSize);
 				ConfigComputeShader.SetInt("AllParticles_Length", AllParticles_Length);
-				ConfigComputeShader.SetBuffer(HashCodeToSortedParticleIndexes_Bin, "HashCodeToSortedParticleIndexes", HashCodeToSortedParticleIndexes);
+				ConfigComputeShader.SetBuffer(hashCodeToSortedParticleIndexes_Bin, "HashCodeToSortedParticleIndexes", HashCodeToSortedParticleIndexes);
 				ConfigComputeShader.SetInt("HashCodeToSortedParticleIndexes_Length", HashCodeToSortedParticleIndexes_Length);
-				ConfigComputeShader.SetBuffer(HashCodeToSortedParticleIndexes_Bin, "SortedParticleIndexes", SortedParticleIndexes);
-				ConfigComputeShader.Dispatch(HashCodeToSortedParticleIndexes_Bin, AllParticles_Length / 64, 1, 1);
+				ConfigComputeShader.SetBuffer(hashCodeToSortedParticleIndexes_Bin, "SortedParticleIndexes", SortedParticleIndexes);
+				ConfigComputeShader.Dispatch(hashCodeToSortedParticleIndexes_Bin, AllParticles_Length / 64, 1, 1);
 			}
 		}
 
@@ -381,7 +388,7 @@ public class Main : MonoBehaviour
 			ConfigComputeShader.SetBuffer(simulate, "SortedParticleIndexes", SortedParticleIndexes);
 			ConfigComputeShader.SetBool("ClampTo2D", ClampTo2D);
 			ConfigComputeShader.Dispatch(simulate, AllParticles_Length / 64, 1, 1);
-	}
+		}
 
 		{
 			var simulate = ConfigComputeShader.FindKernel("Simulate_AdjustPosition");

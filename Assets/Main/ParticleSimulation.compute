@@ -13,9 +13,20 @@ float ParticleRadius;
 
 RWStructuredBuffer<int> HashCodeToSortedParticleIndexes;
 
-RWStructuredBuffer<uint> SortedParticleIndexes;
+RWStructuredBuffer<uint2> SortedParticleIndexes;
 
 bool ClampTo2D;
+
+
+
+
+#pragma kernel BitonicSort_Initialize
+[numthreads(64, 1, 1)]
+void BitonicSort_Initialize(uint3 id : SV_DispatchThreadID)
+{
+    SortedParticleIndexes[id.x] = uint2(id.x, GetHashCode(AllParticles_Position[id.x].xyz));
+}
+
 
 
 uint ComparisonOffset;
@@ -23,34 +34,54 @@ uint DirectionChangeStride;
 
 // help from https://github.com/hiroakioishi/UnityGPUBitonicSort/blob/master/GPUBitonicSort/Assets/BitonicSortCS/BitonicSort.compute
 // explained at https://en.wikipedia.org/wiki/Bitonic_sorter and https://www.geeksforgeeks.org/bitonic-sort/
-#pragma kernel BitonicSort
+#pragma kernel BitonicSort_Sort_Over512
 [numthreads(64, 1, 1)]
-void BitonicSort(uint3 id : SV_DispatchThreadID)
+void BitonicSort_Sort_Over512(uint3 id : SV_DispatchThreadID)
 {
-    // int index0 = (id.x & (ComparisonOffset-1)) + (id.x & ~(ComparisonOffset-1)) << 1;
-	// int index1 = index0 + ComparisonOffset;    
-    // int key0 = GetHashCode(AllParticles_Position[index0]);
-    // int key1 = GetHashCode(AllParticles_Position[index1]);
-    // bool shouldSwap = (key0 <= key1) == (bool)(DirectionChangeStride & index0);
-
-	//uint result = ((shared_data[id.x & ~ComparisonOffset] <= shared_data[id.x | ComparisonOffset]) == (bool)(DirectionChangeStride & id.x)) ? shared_data[id.x ^ ComparisonOffset] : shared_data[id.x];
-
     int index0 = id.x & ~ComparisonOffset; // index top
 	int index1 = id.x | ComparisonOffset; // index bottom
     if (index1 == id.x) return;
     
-    uint hashcode0 = GetHashCode(AllParticles_Position[SortedParticleIndexes[index0]].xyz);
-    uint hashcode1 = GetHashCode(AllParticles_Position[SortedParticleIndexes[index1]].xyz);
+    uint hashcode0 = SortedParticleIndexes[index0].y;
+    uint hashcode1 = SortedParticleIndexes[index1].y;
     bool shouldSwap = (hashcode0 <= hashcode1) == (bool)(DirectionChangeStride & index0);
 
     if (shouldSwap)
     {
-        uint temp = SortedParticleIndexes[index0];
+        uint2 temp = SortedParticleIndexes[index0];
         SortedParticleIndexes[index0] = SortedParticleIndexes[index1];
         SortedParticleIndexes[index1] = temp;
     }
 }
 
+#define BITONIC_BLOCK_SIZE 512
+groupshared uint2 GroupSharedData[BITONIC_BLOCK_SIZE];
+#pragma kernel BitonicSort_Sort_UnderOrEqualTo512
+[numthreads(BITONIC_BLOCK_SIZE, 1, 1)]
+void BitonicSort_Sort_UnderOrEqualTo512(uint3 Gid  : SV_GroupID, 
+				 uint3 DTid : SV_DispatchThreadID, 
+				 uint3 GTid : SV_GroupThreadID, 
+				 uint  GI   : SV_GroupIndex)
+{
+	// Load shared data
+	GroupSharedData[GI] = SortedParticleIndexes[DTid.x];
+	GroupMemoryBarrierWithGroupSync();
+
+	// Sort the shared data
+	for (uint comparisonOffset = ComparisonOffset; comparisonOffset > 0; comparisonOffset >>= 1)
+	{
+		uint2 result = (
+            (GroupSharedData[GI & ~comparisonOffset].y <= GroupSharedData[GI | comparisonOffset].y) == (bool)(DirectionChangeStride & DTid.x)) ? 
+            GroupSharedData[GI ^ comparisonOffset] : 
+            GroupSharedData[GI];
+		GroupMemoryBarrierWithGroupSync();
+		GroupSharedData[GI] = result;
+		GroupMemoryBarrierWithGroupSync();
+	}
+
+	// Store shared data
+	SortedParticleIndexes[DTid.x] = GroupSharedData[GI];
+}
 
 
 
@@ -58,8 +89,7 @@ void BitonicSort(uint3 id : SV_DispatchThreadID)
 [numthreads(64, 1, 1)]
 void HashCodeToSortedParticleIndexes_Initialize(uint3 id : SV_DispatchThreadID)
 {  
-    HashCodeToSortedParticleIndexes[id.x * 2 + 0] = -1; // particle start index
-    HashCodeToSortedParticleIndexes[id.x * 2 + 1] = -1; // particle end index 
+    HashCodeToSortedParticleIndexes[id.x] = -1;
 }
 
 
@@ -73,8 +103,8 @@ void HashCodeToSortedParticleIndexes_Bin(uint3 id : SV_DispatchThreadID)
     uint index2 = id.x + 1;
     if (index2 >= AllParticles_Length) return;
 
-    uint hashcode1 = GetHashCode(AllParticles_Position[SortedParticleIndexes[index1]].xyz);
-    uint hashcode2 = GetHashCode(AllParticles_Position[SortedParticleIndexes[index2]].xyz);
+    uint hashcode1 = SortedParticleIndexes[index1].y;
+    uint hashcode2 = SortedParticleIndexes[index2].y;
 
     if (hashcode1 != hashcode2)
     {
@@ -171,7 +201,7 @@ void Simulate_AdjustVelocity(uint3 id : SV_DispatchThreadID)
             sortedParticlesIndex <= sortedParticlesEndIndex; 
             sortedParticlesIndex++)
         {
-            uint otherParticleIndex = SortedParticleIndexes[sortedParticlesIndex];
+            uint otherParticleIndex = SortedParticleIndexes[sortedParticlesIndex].x;
             if (otherParticleIndex != thisParticleIndex)
             {
                 float3 otherParticlePosition = AllParticles_Position[otherParticleIndex].xyz;

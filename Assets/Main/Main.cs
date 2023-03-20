@@ -309,7 +309,7 @@ public class Main : MonoBehaviour
 			ConfigComputeShader.SetVector("RayDirection", ray.direction);
 			ConfigComputeShader.SetBuffer(raycastHitParticles, "HitResults", hitResult);
 			ConfigComputeShader.SetBuffer(raycastHitParticles, "AllParticles_Position", AllParticles_Position);
-			ConfigComputeShader.Dispatch(raycastHitParticles, AllParticles_Length / 64, 1, 1);
+			ConfigComputeShader.Dispatch(raycastHitParticles, AllParticles_Length / 512, 1, 1);
 
 			AsyncGPUReadback.Request(hitResult, (result) =>
 			{

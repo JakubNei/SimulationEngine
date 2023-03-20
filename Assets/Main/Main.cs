@@ -245,7 +245,7 @@ public class Main : MonoBehaviour
 				ConfigComputeShader.SetInt("HashCodeToSortedParticleIndexes_Length", HashCodeToSortedParticleIndexes_Length);
 				ConfigComputeShader.SetBuffer(bitonicSort, "AllParticles_Position", AllParticles_Position);
 				ConfigComputeShader.SetBuffer(bitonicSort, "SortedParticleIndexes", SortedParticleIndexes);
-				ConfigComputeShader.Dispatch(bitonicSort, AllParticles_Length / 64, 1, 1);
+				ConfigComputeShader.Dispatch(bitonicSort, AllParticles_Length / 512, 1, 1);
 			}
 
 			{
@@ -268,7 +268,7 @@ public class Main : MonoBehaviour
 							ConfigComputeShader.SetBuffer(bitonicSort, "SortedParticleIndexes", SortedParticleIndexes);
 							ConfigComputeShader.SetInt("DirectionChangeStride", DirectionChangeStride);
 							ConfigComputeShader.SetInt("ComparisonOffset", ComparisonOffset);
-							ConfigComputeShader.Dispatch(bitonicSort, AllParticles_Length / 64, 1, 1);
+							ConfigComputeShader.Dispatch(bitonicSort, AllParticles_Length / 512, 1, 1);
 							if (ComparisonOffset == 1) break;
 						}
 					}

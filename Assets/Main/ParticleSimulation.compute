@@ -32,7 +32,7 @@ uint GetHashCode(float3 position)
 
 
 #pragma kernel BitonicSort_Initialize
-[numthreads(64, 1, 1)]
+[numthreads(512, 1, 1)]
 void BitonicSort_Initialize(uint3 id : SV_DispatchThreadID)
 {
     SortedParticleIndexes[id.x] = uint2(id.x, GetHashCode(AllParticles_Position[id.x].xyz));
@@ -46,7 +46,7 @@ uint DirectionChangeStride;
 // help from https://github.com/hiroakioishi/UnityGPUBitonicSort/blob/master/GPUBitonicSort/Assets/BitonicSortCS/BitonicSort.compute
 // explained at https://en.wikipedia.org/wiki/Bitonic_sorter and https://www.geeksforgeeks.org/bitonic-sort/
 #pragma kernel BitonicSort_Sort
-[numthreads(64, 1, 1)]
+[numthreads(512, 1, 1)]
 void BitonicSort_Sort(uint3 id : SV_DispatchThreadID)
 {
     int index0 = id.x & ~ComparisonOffset; // index top

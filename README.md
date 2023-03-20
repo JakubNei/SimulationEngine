@@ -23,7 +23,7 @@ Each particle can collide with all other particles, but we leverage the limited 
 [Prokop Hapala RARFF Solver]
 [Prokop Hapala RARFF Solver Test]
 ## Electron Force Field
-[An Electron Force Field for Simulating Large Scale Excited Electron Dynamics]
+[An Electron Force Field for Simulating Large Scale Excited Electron Dynamics, 2007]
 zkusit implementovat electron-forcefield (eFF) ... ten je uz trochu kvantovy ... a nikdo ho na GPU nema, bylo by to dost cool jako nejaka edukativni hra... ale tam je trochu komplikace:
 1) ty elektrony se nafukuji (jsou to jakoby natlakovane oblacky/balonky, cim jsou vetsi tim maji mensi energii)
 2) jsou tam silne daleko-dosahove interakce (elekstrostatika), takze ta akcelerace kratko-dosahovych interaci (=kolizi) az tolik nepomuze
@@ -38,16 +38,20 @@ zkusit implementovat electron-forcefield (eFF) ... ten je uz trochu kvantovy ...
 # Resources
 
 ## Papers
-[An Electron Force Field for Simulating Large Scale Excited Electron Dynamics]
+[An Electron Force Field for Simulating Large Scale Excited Electron Dynamics, 2007]
 
-[An Electron Force Field for Simulating Large Scale Excited Electron Dynamics]:https://thesis.library.caltech.edu/1598/?fbclid=IwAR2ZoADYZzUbqnOLgEGWrlHrHGmFl805R1VBTvMnfogSYXCDGaHpTaE4fDY
+[An Electron Force Field for Simulating Large Scale Excited Electron Dynamics, 2007]:https://thesis.library.caltech.edu/1598/?fbclid=IwAR2ZoADYZzUbqnOLgEGWrlHrHGmFl805R1VBTvMnfogSYXCDGaHpTaE4fDY
 
-
-[A More Efficient Parallel Method For Neighbour Search Using CUDA]
-
-[A More Efficient Parallel Method For Neighbour Search Using CUDA]:http://diglib.eg.org/bitstream/handle/10.2312/vriphys20151339/101-109.pdf?fbclid=IwAR26EUM2MlLdBVF2R-NkF0bjqqJYFX8tfkGLBqNXHNTqLG3fWdj0-wn-FoU
+[NVIDIA Particle Simulation using CUDA, 2010]
 
 [NVIDIA Particle Simulation using CUDA, 2010]: https://developer.download.nvidia.com/assets/cuda/files/particles.pdf
+
+[A More Efficient Parallel Method For Neighbour Search Using CUDA, 2015]
+
+[A More Efficient Parallel Method For Neighbour Search Using CUDA, 2015]:http://diglib.eg.org/bitstream/handle/10.2312/vriphys20151339/101-109.pdf?fbclid=IwAR26EUM2MlLdBVF2R-NkF0bjqqJYFX8tfkGLBqNXHNTqLG3fWdj0-wn-FoU
+
+![](.images/octant_subdivsion_problem.png)
+
 ## Wikipedia
 
 [Bitonic sort Wikipedia]

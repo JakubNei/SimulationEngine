@@ -40,18 +40,24 @@ public class Main : MonoBehaviour
 	int BoundingPlanes_Length;
 
 	// [normal x, normal y, normal z, distance] * BoundingPlanes_Length
-	ComputeBuffer BoundingPlanes_NormalDistance; 
+	ComputeBuffer BoundingPlanes_NormalDistance;
 
 	// maximum amount of voxel cells
-	int HashCodeToSortedParticleIndexes_Length = 1024 * 64;
+	int HashCodeToSortedParticleIndexes_Length = 256 * 256 * 256;
 
 	// our scale space is in nanometers, atoms have an average radius of about 0.1 nm, so one Unity unit is one nanometer in this project
 	const float particleRadius = 0.1f;
 	const float interactionMaxRadius = particleRadius * 2;
-	float VoxelCellEdgeSize = interactionMaxRadius;
+	float ParticleInteractionMaxRadius = interactionMaxRadius;
 
-	public bool ClampTo2D = true;
-	public bool DrawWithShadows = true;
+	public bool ShouldDrawParticles = true;
+	public bool ShouldDrawParticlesShadows = true;
+	public bool ShouldClampParticlesToXyPlane = true;
+	public bool ShouldRunBitonicSort = true;
+	public bool ShouldUseBitonicSortGroupSharedMemory = true;
+	public bool ShouldAllowPlayerParticleDrag = true;
+	public bool ShouldRunSimulation = true;
+
 
 	struct CursorHitResult
 	{
@@ -76,6 +82,8 @@ public class Main : MonoBehaviour
 	{
 		Random.InitState(0x6584f86);
 
+		Application.targetFrameRate = -1;
+
 		// ERROR: Thread group count is above the maximum allowed limit. Maximum allowed thread group count is 65535
 
 		// force 64 for num threads
@@ -98,7 +106,7 @@ public class Main : MonoBehaviour
 				{
 					var p = new Vector3(x * interactionMaxRadius, y * interactionMaxRadius, 0);
 					p += Random.onUnitSphere * interactionMaxRadius;
-					if (ClampTo2D)
+					if (ShouldClampParticlesToXyPlane)
 						p.z = 0;
 					else
 						p.z *= 0.1f;
@@ -192,8 +200,14 @@ public class Main : MonoBehaviour
 			Start();
 		}
 
-		ClampTo2D = GUILayout.Toggle(ClampTo2D, "clamp to 2d");
-		DrawWithShadows = GUILayout.Toggle(DrawWithShadows, "shadows");		
+		ShouldDrawParticles = GUILayout.Toggle(ShouldDrawParticles, "draw particles");
+		ShouldDrawParticlesShadows = GUILayout.Toggle(ShouldDrawParticlesShadows, "draw particles shadows");
+		ShouldAllowPlayerParticleDrag = GUILayout.Toggle(ShouldAllowPlayerParticleDrag, "allow player to drag particle");
+		ShouldRunBitonicSort = GUILayout.Toggle(ShouldRunBitonicSort, "run bitonic sort");
+		ShouldUseBitonicSortGroupSharedMemory = GUILayout.Toggle(ShouldUseBitonicSortGroupSharedMemory, "use bitonic sort group shared memory");
+		ShouldRunSimulation = GUILayout.Toggle(ShouldRunSimulation, "run particle velocity and position update");
+		ShouldClampParticlesToXyPlane = GUILayout.Toggle(ShouldClampParticlesToXyPlane, "clamp particles to xy plane");
+
 	}
 
 	// Update is called once per frame
@@ -223,61 +237,66 @@ public class Main : MonoBehaviour
 			BoundingPlanes_NormalDistance.SetData(boundingPlanes);
 		}
 
+		if (ShouldRunBitonicSort)
 		{
-			var bitonicSort = ConfigComputeShader.FindKernel("BitonicSort_Initialize");
-			ConfigComputeShader.SetFloat("VoxelCellEdgeSize", VoxelCellEdgeSize);
-			ConfigComputeShader.SetInt("HashCodeToSortedParticleIndexes_Length", HashCodeToSortedParticleIndexes_Length);
-			ConfigComputeShader.SetBuffer(bitonicSort, "AllParticles_Position", AllParticles_Position);
-			ConfigComputeShader.SetBuffer(bitonicSort, "SortedParticleIndexes", SortedParticleIndexes);
-			ConfigComputeShader.Dispatch(bitonicSort, AllParticles_Length / 64, 1, 1);
-		}
-
-		{
-			for (int DirectionChangeStride = 2; DirectionChangeStride <= AllParticles_Length; DirectionChangeStride *= 2)
 			{
-				for (int ComparisonOffset = DirectionChangeStride / 2; true; ComparisonOffset /= 2)
+				var bitonicSort = ConfigComputeShader.FindKernel("BitonicSort_Initialize");
+				ConfigComputeShader.SetFloat("ParticleInteractionMaxRadius", ParticleInteractionMaxRadius);
+				ConfigComputeShader.SetInt("HashCodeToSortedParticleIndexes_Length", HashCodeToSortedParticleIndexes_Length);
+				ConfigComputeShader.SetBuffer(bitonicSort, "AllParticles_Position", AllParticles_Position);
+				ConfigComputeShader.SetBuffer(bitonicSort, "SortedParticleIndexes", SortedParticleIndexes);
+				ConfigComputeShader.Dispatch(bitonicSort, AllParticles_Length / 64, 1, 1);
+			}
+
+			{
+				for (int DirectionChangeStride = 2; DirectionChangeStride <= AllParticles_Length; DirectionChangeStride *= 2)
 				{
-					if (ComparisonOffset > 256)
+					for (int ComparisonOffset = DirectionChangeStride / 2; true; ComparisonOffset /= 2)
 					{
-						var bitonicSort = ConfigComputeShader.FindKernel("BitonicSort_Sort");
-						ConfigComputeShader.SetBuffer(bitonicSort, "SortedParticleIndexes", SortedParticleIndexes);
-						ConfigComputeShader.SetInt("DirectionChangeStride", DirectionChangeStride);
-						ConfigComputeShader.SetInt("ComparisonOffset", ComparisonOffset);
-						ConfigComputeShader.Dispatch(bitonicSort, AllParticles_Length / 64, 1, 1);
+						if (ShouldUseBitonicSortGroupSharedMemory && ComparisonOffset <= 256)
+						{
+							var bitonicSort = ConfigComputeShader.FindKernel("BitonicSort_Sort_GroupShared");
+							ConfigComputeShader.SetBuffer(bitonicSort, "SortedParticleIndexes", SortedParticleIndexes);
+							ConfigComputeShader.SetInt("DirectionChangeStride", DirectionChangeStride);
+							ConfigComputeShader.SetInt("ComparisonOffset", ComparisonOffset);
+							ConfigComputeShader.Dispatch(bitonicSort, AllParticles_Length / 512, 1, 1);
+							break;
+						}
+						else
+						{
+							var bitonicSort = ConfigComputeShader.FindKernel("BitonicSort_Sort");
+							ConfigComputeShader.SetBuffer(bitonicSort, "SortedParticleIndexes", SortedParticleIndexes);
+							ConfigComputeShader.SetInt("DirectionChangeStride", DirectionChangeStride);
+							ConfigComputeShader.SetInt("ComparisonOffset", ComparisonOffset);
+							ConfigComputeShader.Dispatch(bitonicSort, AllParticles_Length / 64, 1, 1);
+							if (ComparisonOffset == 1) break;
+						}
 					}
-					else
-					{
-						var bitonicSort = ConfigComputeShader.FindKernel("BitonicSort_Sort_GroupShared");
-						ConfigComputeShader.SetBuffer(bitonicSort, "SortedParticleIndexes", SortedParticleIndexes);
-						ConfigComputeShader.SetInt("DirectionChangeStride", DirectionChangeStride);
-						ConfigComputeShader.SetInt("ComparisonOffset", ComparisonOffset);
-						ConfigComputeShader.Dispatch(bitonicSort, AllParticles_Length / 512, 1, 1);
-						break;
-					}
+				}
+			}
+
+			{
+				{
+					var hashCodeToSortedParticleIndexes_Initialize = ConfigComputeShader.FindKernel("HashCodeToSortedParticleIndexes_Initialize");
+					ConfigComputeShader.SetBuffer(hashCodeToSortedParticleIndexes_Initialize, "HashCodeToSortedParticleIndexes", HashCodeToSortedParticleIndexes);
+					ConfigComputeShader.Dispatch(hashCodeToSortedParticleIndexes_Initialize, HashCodeToSortedParticleIndexes_Length / 512, 1, 1);
+				}
+
+				{
+					var hashCodeToSortedParticleIndexes_Bin = ConfigComputeShader.FindKernel("HashCodeToSortedParticleIndexes_Bin");
+					ConfigComputeShader.SetBuffer(hashCodeToSortedParticleIndexes_Bin, "AllParticles_Position", AllParticles_Position);
+					ConfigComputeShader.SetFloat("ParticleInteractionMaxRadius", ParticleInteractionMaxRadius);
+					ConfigComputeShader.SetInt("AllParticles_Length", AllParticles_Length);
+					ConfigComputeShader.SetBuffer(hashCodeToSortedParticleIndexes_Bin, "HashCodeToSortedParticleIndexes", HashCodeToSortedParticleIndexes);
+					ConfigComputeShader.SetInt("HashCodeToSortedParticleIndexes_Length", HashCodeToSortedParticleIndexes_Length);
+					ConfigComputeShader.SetBuffer(hashCodeToSortedParticleIndexes_Bin, "SortedParticleIndexes", SortedParticleIndexes);
+					ConfigComputeShader.Dispatch(hashCodeToSortedParticleIndexes_Bin, AllParticles_Length / 512, 1, 1);
 				}
 			}
 		}
 
-		{
-			{
-				var hashCodeToSortedParticleIndexes_Initialize = ConfigComputeShader.FindKernel("HashCodeToSortedParticleIndexes_Initialize");
-				ConfigComputeShader.SetBuffer(hashCodeToSortedParticleIndexes_Initialize, "HashCodeToSortedParticleIndexes", HashCodeToSortedParticleIndexes);
-				ConfigComputeShader.Dispatch(hashCodeToSortedParticleIndexes_Initialize, HashCodeToSortedParticleIndexes_Length * 2 / 64, 1, 1);
-			}
-
-			{
-				var hashCodeToSortedParticleIndexes_Bin = ConfigComputeShader.FindKernel("HashCodeToSortedParticleIndexes_Bin");
-				ConfigComputeShader.SetBuffer(hashCodeToSortedParticleIndexes_Bin, "AllParticles_Position", AllParticles_Position);
-				ConfigComputeShader.SetFloat("VoxelCellEdgeSize", VoxelCellEdgeSize);
-				ConfigComputeShader.SetInt("AllParticles_Length", AllParticles_Length);
-				ConfigComputeShader.SetBuffer(hashCodeToSortedParticleIndexes_Bin, "HashCodeToSortedParticleIndexes", HashCodeToSortedParticleIndexes);
-				ConfigComputeShader.SetInt("HashCodeToSortedParticleIndexes_Length", HashCodeToSortedParticleIndexes_Length);
-				ConfigComputeShader.SetBuffer(hashCodeToSortedParticleIndexes_Bin, "SortedParticleIndexes", SortedParticleIndexes);
-				ConfigComputeShader.Dispatch(hashCodeToSortedParticleIndexes_Bin, AllParticles_Length / 64, 1, 1);
-			}
-		}
-
 		// raycast find particle under mouse
+		if (ShouldAllowPlayerParticleDrag)
 		{
 			if (!hitResultPool.TryDequeue(out var hitResult))
 				hitResult = new ComputeBuffer(emptyHitResult.Count, Marshal.SizeOf(typeof(int)) * 4, ComputeBufferType.Structured);
@@ -327,6 +346,7 @@ public class Main : MonoBehaviour
 		}
 
 		// drag particle
+		if (ShouldAllowPlayerParticleDrag)
 		{
 			if (DraggingParticleIndex.HasValue)
 			{
@@ -376,42 +396,46 @@ public class Main : MonoBehaviour
 			}
 		}
 
+		if (ShouldRunSimulation)
 		{
-			var simulate = ConfigComputeShader.FindKernel("Simulate_AdjustVelocity");
-			ConfigComputeShader.SetFloat("DeltaTime", 0.01f);
-			ConfigComputeShader.SetFloat("ParticleRadius", particleRadius);
-			ConfigComputeShader.SetBuffer(simulate, "AllParticles_Position", AllParticles_Position);
-			ConfigComputeShader.SetBuffer(simulate, "AllParticles_Velocity", AllParticles_Velocity);
-			ConfigComputeShader.SetBuffer(simulate, "AllParticles_Rotation", AllParticles_Rotation);
-			ConfigComputeShader.SetInt("BoundingPlanes_Length", BoundingPlanes_Length);
-			ConfigComputeShader.SetBuffer(simulate, "BoundingPlanes_NormalDistance", BoundingPlanes_NormalDistance);
-			ConfigComputeShader.SetFloat("VoxelCellEdgeSize", VoxelCellEdgeSize);
-			ConfigComputeShader.SetBuffer(simulate, "HashCodeToSortedParticleIndexes", HashCodeToSortedParticleIndexes);
-			ConfigComputeShader.SetInt("HashCodeToSortedParticleIndexes_Length", HashCodeToSortedParticleIndexes_Length);
-			ConfigComputeShader.SetBuffer(simulate, "SortedParticleIndexes", SortedParticleIndexes);
-			ConfigComputeShader.SetBool("ClampTo2D", ClampTo2D);
-			ConfigComputeShader.Dispatch(simulate, AllParticles_Length / 64, 1, 1);
+			{
+				var simulate = ConfigComputeShader.FindKernel("Simulate_AdjustVelocity");
+				ConfigComputeShader.SetFloat("DeltaTime", 0.01f);
+				ConfigComputeShader.SetFloat("ParticleRadius", particleRadius);
+				ConfigComputeShader.SetBuffer(simulate, "AllParticles_Position", AllParticles_Position);
+				ConfigComputeShader.SetBuffer(simulate, "AllParticles_Velocity", AllParticles_Velocity);
+				ConfigComputeShader.SetBuffer(simulate, "AllParticles_Rotation", AllParticles_Rotation);
+				ConfigComputeShader.SetInt("BoundingPlanes_Length", BoundingPlanes_Length);
+				ConfigComputeShader.SetBuffer(simulate, "BoundingPlanes_NormalDistance", BoundingPlanes_NormalDistance);
+				ConfigComputeShader.SetFloat("ParticleInteractionMaxRadius", ParticleInteractionMaxRadius);
+				ConfigComputeShader.SetBuffer(simulate, "HashCodeToSortedParticleIndexes", HashCodeToSortedParticleIndexes);
+				ConfigComputeShader.SetInt("HashCodeToSortedParticleIndexes_Length", HashCodeToSortedParticleIndexes_Length);
+				ConfigComputeShader.SetBuffer(simulate, "SortedParticleIndexes", SortedParticleIndexes);
+				ConfigComputeShader.SetBool("ClampTo2D", ShouldClampParticlesToXyPlane);
+				ConfigComputeShader.Dispatch(simulate, AllParticles_Length / 512, 1, 1);
+			}
+
+			{
+				var simulate = ConfigComputeShader.FindKernel("Simulate_AdjustPosition");
+				ConfigComputeShader.SetFloat("DeltaTime", 0.01f);
+				ConfigComputeShader.SetBuffer(simulate, "AllParticles_Position", AllParticles_Position);
+				ConfigComputeShader.SetBuffer(simulate, "AllParticles_Velocity", AllParticles_Velocity);
+				ConfigComputeShader.SetFloat("ParticleInteractionMaxRadius", ParticleInteractionMaxRadius);
+				ConfigComputeShader.SetBuffer(simulate, "HashCodeToSortedParticleIndexes", HashCodeToSortedParticleIndexes);
+				ConfigComputeShader.SetInt("HashCodeToSortedParticleIndexes_Length", HashCodeToSortedParticleIndexes_Length);
+				ConfigComputeShader.SetBuffer(simulate, "SortedParticleIndexes", SortedParticleIndexes);
+				ConfigComputeShader.SetBool("ClampTo2D", ShouldClampParticlesToXyPlane);
+				ConfigComputeShader.Dispatch(simulate, AllParticles_Length / 512, 1, 1);
+			}
 		}
 
-		{
-			var simulate = ConfigComputeShader.FindKernel("Simulate_AdjustPosition");
-			ConfigComputeShader.SetFloat("DeltaTime", 0.01f);
-			ConfigComputeShader.SetBuffer(simulate, "AllParticles_Position", AllParticles_Position);
-			ConfigComputeShader.SetBuffer(simulate, "AllParticles_Velocity", AllParticles_Velocity);
-			ConfigComputeShader.SetFloat("VoxelCellEdgeSize", VoxelCellEdgeSize);
-			ConfigComputeShader.SetBuffer(simulate, "HashCodeToSortedParticleIndexes", HashCodeToSortedParticleIndexes);
-			ConfigComputeShader.SetInt("HashCodeToSortedParticleIndexes_Length", HashCodeToSortedParticleIndexes_Length);
-			ConfigComputeShader.SetBuffer(simulate, "SortedParticleIndexes", SortedParticleIndexes);
-			ConfigComputeShader.SetBool("ClampTo2D", ClampTo2D);
-			ConfigComputeShader.Dispatch(simulate, AllParticles_Length / 64, 1, 1);
-		}
-
-		DrawParticles();
+		if (ShouldDrawParticles)
+			DrawParticles();
 	}
 
 	void DrawParticles()
 	{
-		var material = DrawWithShadows ? ConfigParticlesMaterialWithShadows : ConfigParticlesMaterial;	
+		var material = ShouldDrawParticlesShadows ? ConfigParticlesMaterialWithShadows : ConfigParticlesMaterial;
 
 		material.SetInt("AllParticles_Length", AllParticles_Length);
 		material.SetBuffer("AllParticles_Position", AllParticles_Position);
@@ -420,10 +444,10 @@ public class Main : MonoBehaviour
 		material.SetBuffer("HashCodeToSortedParticleIndexes", HashCodeToSortedParticleIndexes);
 		material.SetInt("HashCodeToSortedParticleIndexes_Length", HashCodeToSortedParticleIndexes_Length);
 		material.SetFloat("Scale", particleRadius * 2);
-		material.SetFloat("VoxelCellEdgeSize", VoxelCellEdgeSize);
+		material.SetFloat("ParticleInteractionMaxRadius", ParticleInteractionMaxRadius);
 
 		var bounds = new Bounds(Vector3.zero, Vector3.one * 1000);
-		if (DrawWithShadows)
+		if (ShouldDrawParticlesShadows)
 			Graphics.DrawMeshInstancedIndirect(ConfigParticleMesh, 0, material, bounds, IndirectArguments_DrawMeshParticles, 0, null, ShadowCastingMode.On, true, 0, null, LightProbeUsage.BlendProbes);
 		else
 			Graphics.DrawMeshInstancedIndirect(ConfigParticleMesh, 0, material, bounds, IndirectArguments_DrawMeshParticles, 0, null, ShadowCastingMode.Off, false, 0, null, LightProbeUsage.Off);

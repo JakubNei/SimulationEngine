@@ -29,8 +29,8 @@ zkusit implementovat electron-forcefield (eFF) ... ten je uz trochu kvantovy ...
 2) jsou tam silne daleko-dosahove interakce (elekstrostatika), takze ta akcelerace kratko-dosahovych interaci (=kolizi) az tolik nepomuze
 
 # Optimizations
-- [Fetch from cells only relevant for particle octant][A More Efficient Parallel Method For Neighbour Search Using CUDA]
-  
+
+
 ## Other
 [Consider using OpenCL in Unity][Using OpenCL in Unity]
 

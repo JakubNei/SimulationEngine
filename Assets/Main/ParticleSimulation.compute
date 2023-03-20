@@ -1,4 +1,3 @@
-#include "Common.cginc"
 
 int AllParticles_Length;
 RWStructuredBuffer<float4> AllParticles_Position;
@@ -16,6 +15,18 @@ RWStructuredBuffer<int> HashCodeToSortedParticleIndexes;
 RWStructuredBuffer<uint2> SortedParticleIndexes;
 
 bool ClampTo2D;
+
+
+
+int HashCodeToSortedParticleIndexes_Length;
+float ParticleInteractionMaxRadius;
+
+
+uint GetHashCode(float3 position)
+{
+    uint3 p = abs((int3)(position / ParticleInteractionMaxRadius) + 128);
+    return (p.x + (p.y << 8) + (p.z << 16)) % HashCodeToSortedParticleIndexes_Length;
+}
 
 
 
@@ -54,6 +65,8 @@ void BitonicSort_Sort(uint3 id : SV_DispatchThreadID)
     }
 }
 
+// Optimization: instead of dispatching multiple kernels with small comparionOffsets
+// we can use many comparionOffsets in one kernel if the comparionOffsets is small enough and all relevant data can fit into shared memory
 #define BITONIC_BLOCK_SIZE 512
 groupshared uint2 GroupSharedData[BITONIC_BLOCK_SIZE];
 #pragma kernel BitonicSort_Sort_GroupShared
@@ -88,15 +101,16 @@ void BitonicSort_Sort_GroupShared(uint3 Gid  : SV_GroupID,
 
 
 #pragma kernel HashCodeToSortedParticleIndexes_Initialize
-[numthreads(64, 1, 1)]
+[numthreads(512, 1, 1)]
 void HashCodeToSortedParticleIndexes_Initialize(uint3 id : SV_DispatchThreadID)
 {  
-    HashCodeToSortedParticleIndexes[id.x] = -1;
+    HashCodeToSortedParticleIndexes[id.x * 2 + 0] = -1;
+    HashCodeToSortedParticleIndexes[id.x * 2 + 1] = -1;
 }
 
 // idea from https://developer.download.nvidia.com/assets/cuda/files/particles.pdf
 #pragma kernel HashCodeToSortedParticleIndexes_Bin
-[numthreads(64, 1, 1)]
+[numthreads(512, 1, 1)]
 void HashCodeToSortedParticleIndexes_Bin(uint3 id : SV_DispatchThreadID)
 {  
     uint index1 = id.x + 0;
@@ -169,7 +183,7 @@ int DragParticleIndex;
 float3 DragTargetWorldPosition;
 
 #pragma kernel Simulate_AdjustVelocity
-[numthreads(64, 1, 1)]
+[numthreads(512, 1, 1)]
 void Simulate_AdjustVelocity(uint3 id : SV_DispatchThreadID)
 {
     uint thisParticleIndex = id.x;
@@ -183,7 +197,7 @@ void Simulate_AdjustVelocity(uint3 id : SV_DispatchThreadID)
             for (int y = -1; y <= 1; y++)
                 for (int z = -1; z <= 1; z++)
                 {
-                    hashcodes[i] = GetHashCode(thisParticlePosition + float3(x,y,z) * VoxelCellEdgeSize);
+                    hashcodes[i] = GetHashCode(thisParticlePosition + float3(x,y,z) * ParticleInteractionMaxRadius);
                     i++;
                 }
     }
@@ -207,10 +221,9 @@ void Simulate_AdjustVelocity(uint3 id : SV_DispatchThreadID)
                 float3 otherParticlePosition = AllParticles_Position[otherParticleIndex].xyz;
                 float3 direction = thisParticlePosition - otherParticlePosition;
                 float len = length(direction);
-                const float interactionMaxRadius = 0.2;
-                if (len <= interactionMaxRadius)
+                if (len <= ParticleInteractionMaxRadius)
                 {
-                    thisParticleForce += direction / len * 30 * (1.0 - min(1.0, len / interactionMaxRadius));
+                    thisParticleForce += direction / len * 30 * (1.0 - min(1.0, len / ParticleInteractionMaxRadius));
                     countOfOtherParticlesInRange++;
                 }
             }
@@ -221,7 +234,7 @@ void Simulate_AdjustVelocity(uint3 id : SV_DispatchThreadID)
     {
         float3 direction = DragTargetWorldPosition - thisParticlePosition;
         float len = length(direction);
-        thisParticleForce += direction / len * 5;             
+        thisParticleForce += direction / len * clamp(0, 10, len * 10);             
     }   
     
  
@@ -232,7 +245,6 @@ void Simulate_AdjustVelocity(uint3 id : SV_DispatchThreadID)
         if (distanceToPlane < 0)
         {
             thisParticleForce += plane.xyz * clamp(abs(distanceToPlane), 0, 1) * 100;
-
             //thisParticleVelocity = reflect(thisParticleVelocity.xyz, plane.xyz) * 0.8f;
         }
     }
@@ -254,7 +266,7 @@ void Simulate_AdjustVelocity(uint3 id : SV_DispatchThreadID)
 }
 
 #pragma kernel Simulate_AdjustPosition
-[numthreads(64, 1, 1)]
+[numthreads(512, 1, 1)]
 void Simulate_AdjustPosition(uint3 id : SV_DispatchThreadID)
 {
     uint thisParticleIndex = id.x;

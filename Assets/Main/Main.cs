@@ -87,8 +87,8 @@ public class Main : MonoBehaviour
 		// ERROR: Thread group count is above the maximum allowed limit. Maximum allowed thread group count is 65535
 
 		// force 64 for num threads
-		AllParticles_Length = Mathf.Max(1, Mathf.CeilToInt(AllParticles_Length / 64)) * 64;
-		HashCodeToSortedParticleIndexes_Length = Mathf.Max(1, Mathf.CeilToInt(HashCodeToSortedParticleIndexes_Length / 64)) * 64;
+		AllParticles_Length = Mathf.Max(1, Mathf.CeilToInt(AllParticles_Length / 512)) * 512;
+		HashCodeToSortedParticleIndexes_Length = Mathf.Max(512, Mathf.CeilToInt(HashCodeToSortedParticleIndexes_Length / 512)) * 512;
 
 		HashCodeToSortedParticleIndexes = new ComputeBuffer(HashCodeToSortedParticleIndexes_Length * 2, Marshal.SizeOf(typeof(uint)), ComputeBufferType.Structured);
 

@@ -21,23 +21,12 @@ Shader "Unlit/DrawParticlesWithShadows"
 		//#pragma surface my_surf Standard addshadow vertex:my_vert	
 		#pragma surface my_surf Standard addshadow fullforwardshadows vertex:my_vert	
 
-		#pragma target 5.0
+		#pragma target 4.5
 
 		#include "UnityCG.cginc"
 
-		#ifdef SHADER_API_D3D11		
+		#include "DrawParticle.cginc"
 
-			#include "MatrixQuaternion.cginc"
-			int AllParticles_Length;
-			StructuredBuffer<float4> AllParticles_Position;
-			StructuredBuffer<float4> AllParticles_Velocity;
-			StructuredBuffer<float4> AllParticles_Rotation;
-			float Scale;
-		
-		#endif
-		
-
-		// struct for vertex input data
 		struct appdata_id
 		{
 			float4 vertex : POSITION;
@@ -56,28 +45,12 @@ Shader "Unlit/DrawParticlesWithShadows"
 		{
 			UNITY_INITIALIZE_OUTPUT(Input, o);			
 
-			float3 color = 1;
-			float3 vertexPos = v.vertex,xyz;
-
-			#ifdef SHADER_API_D3D11
+			#if defined(SHADER_API_D3D11) || defined(SHADER_API_GLCORE) || defined(SHADER_API_GLES) || defined(SHADER_API_GLES3) || defined(SHADER_API_METAL) || defined(SHADER_API_VULKAN) || defined(SHADER_API_D3D11_9X) || defined(SHADER_API_DESKTOP) || defined(SHADER_API_MOBILE)
 				uint instanceID = (uint)v.instanceID;
-
-				float4 positionData = AllParticles_Position[instanceID];
-				float4 velocityData = AllParticles_Velocity[instanceID];
-				float4 rotation = AllParticles_Rotation[instanceID];
-				
-				//float4x4 modelMatrix = quaternion_to_matrix(rotation);
-				//vertexPos = mul(modelMatrix, vertexPos * Scale) + positionData.xyz;
-				vertexPos = vertexPos * Scale + positionData.xyz;
-
-				float debugValue = velocityData.w;
-				float speed = saturate(length(velocityData.xyz) / 3.0f);
-				float neighbours = saturate(debugValue / 20.0f);
-				color = float3(speed, (1.5 - neighbours) * (1.1 - speed), 0.1 + neighbours);
+				ParticleStruct particle = DrawParticle(v.vertex.xyz, instanceID);
+				v.vertex.xyz = particle.vertexPositionWorldSpace;
+				o.col = float4(particle.color,1);
 			#endif
-
-			v.vertex.xyz = vertexPos;
-			o.col = float4(color,1);
 		}
 
 		void my_surf(Input IN, inout SurfaceOutputStandard o) 

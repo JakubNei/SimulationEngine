@@ -11,10 +11,11 @@ float Scale;
 struct ParticleStruct
 {
     float3 vertexPositionWorldSpace;
+    float3 normalWorldSpace;
     float3 color;
 };
 
-ParticleStruct DrawParticle(float3 vertexPosModelSpace, uint instanceID)
+ParticleStruct DrawParticle(float3 vertexPosModelSpace, float3 normalModelSpace, uint instanceID)
 {
     ParticleStruct result;
 
@@ -22,11 +23,10 @@ ParticleStruct DrawParticle(float3 vertexPosModelSpace, uint instanceID)
     float4 velocityData = AllParticles_Velocity[instanceID];
     float4 rotation = AllParticles_Rotation[instanceID];
 
-    // float4x4 modelMatrix = quaternion_to_matrix(rotation);
-    // vertexPos = mul(modelMatrix, vertexPos * Scale) + positionData.xyz;
-    // float3 worldNormal = mul(modelMatrix, v.normal);
+    float4x4 rotationMatrix = quaternion_to_matrix(rotation);
+    result.normalWorldSpace = mul(rotationMatrix, normalModelSpace);
 
-    result.vertexPositionWorldSpace = vertexPosModelSpace * Scale + positionData.xyz;
+    result.vertexPositionWorldSpace = mul(rotationMatrix, vertexPosModelSpace * Scale) + positionData.xyz;
 
     float debugValue = velocityData.w;
     float speed = saturate(length(velocityData.xyz) / 3.0f);

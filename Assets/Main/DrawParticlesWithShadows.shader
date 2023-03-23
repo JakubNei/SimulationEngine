@@ -12,19 +12,12 @@ Shader "Unlit/DrawParticlesWithShadows"
 		Tags { "RenderType"="Opaque" }
 		LOD 200
 		
-		//Cull Off
-
 		CGPROGRAM
-		// Physically based Standard lighting model, and enable shadows on all light types
-		//#pragma surface surf Standard fullforwardshadows vertex:vert
-		//#pragma multi_compile_instancing
-		//#pragma surface my_surf Standard addshadow vertex:my_vert	
-		#pragma surface my_surf Standard addshadow fullforwardshadows vertex:my_vert	
 
+		#pragma surface my_surf Standard addshadow fullforwardshadows vertex:my_vert	
 		#pragma target 4.5
 
 		#include "UnityCG.cginc"
-
 		#include "DrawParticle.cginc"
 
 		struct appdata_id
@@ -37,7 +30,6 @@ Shader "Unlit/DrawParticlesWithShadows"
 
 		struct Input 
 		{
-			//float2 uv_MainTex;
 			float4 col;
 		};
 
@@ -47,8 +39,9 @@ Shader "Unlit/DrawParticlesWithShadows"
 
 			#if defined(SHADER_API_D3D11) || defined(SHADER_API_GLCORE) || defined(SHADER_API_GLES) || defined(SHADER_API_GLES3) || defined(SHADER_API_METAL) || defined(SHADER_API_VULKAN) || defined(SHADER_API_D3D11_9X) || defined(SHADER_API_DESKTOP) || defined(SHADER_API_MOBILE)
 				uint instanceID = (uint)v.instanceID;
-				ParticleStruct particle = DrawParticle(v.vertex.xyz, instanceID);
+				ParticleStruct particle = DrawParticle(v.vertex.xyz, v.normal.xyz, instanceID);
 				v.vertex.xyz = particle.vertexPositionWorldSpace;
+				v.normal.xyz = particle.normalWorldSpace;
 				o.col = float4(particle.color,1);
 			#endif
 		}

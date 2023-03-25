@@ -1,4 +1,3 @@
-
 Shader "Unlit/DrawParticlesNoShadows"
 {
 	Properties

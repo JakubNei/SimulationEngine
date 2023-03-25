@@ -1,31 +1,32 @@
 
-int AllParticles_Length;
-RWStructuredBuffer<float4> AllParticles_Position;
-RWStructuredBuffer<float4> AllParticles_Velocity;
-RWStructuredBuffer<float4> AllParticles_Rotation;
+
+#include "AtomStruct.cginc"
+int AllAtoms_Length;
+RWStructuredBuffer<Atom> AllAtoms;
+
 
 int BoundingPlanes_Length;
 StructuredBuffer<float4> BoundingPlanes_NormalDistance;
 
 
-float ParticleRadius;
+float AtomRadius;
 
-RWStructuredBuffer<int> HashCodeToSortedParticleIndexes;
+RWStructuredBuffer<int> HashCodeToSortedAtomIndexes;
 
-RWStructuredBuffer<uint2> SortedParticleIndexes;
+RWStructuredBuffer<uint2> SortedAtomIndexes;
 
 bool ClampTo2D;
 
 
 
-int HashCodeToSortedParticleIndexes_Length;
-float ParticleInteractionMaxRadius;
+int HashCodeToSortedAtomIndexes_Length;
+float AtomInteractionMaxRadius;
 
 
 uint GetHashCode(float3 position)
 {
-    uint3 p = abs((int3)(position / ParticleInteractionMaxRadius) + 128);
-    return (p.x + (p.y << 8) + (p.z << 16)) % HashCodeToSortedParticleIndexes_Length;
+    uint3 p = abs((int3)(position / AtomInteractionMaxRadius) + 128);
+    return (p.x + (p.y << 8) + (p.z << 16)) % HashCodeToSortedAtomIndexes_Length;
 }
 
 
@@ -35,7 +36,7 @@ uint GetHashCode(float3 position)
 [numthreads(512, 1, 1)]
 void BitonicSort_Initialize(uint3 id : SV_DispatchThreadID)
 {
-    SortedParticleIndexes[id.x] = uint2(id.x, GetHashCode(AllParticles_Position[id.x].xyz));
+    SortedAtomIndexes[id.x] = uint2(id.x, GetHashCode(AllAtoms[id.x].position));
 }
 
 
@@ -53,15 +54,15 @@ void BitonicSort_Sort(uint3 id : SV_DispatchThreadID)
 	int index1 = id.x | ComparisonOffset; // index bottom
     if (index1 == id.x) return;
     
-    uint hashcode0 = SortedParticleIndexes[index0].y;
-    uint hashcode1 = SortedParticleIndexes[index1].y;
+    uint hashcode0 = SortedAtomIndexes[index0].y;
+    uint hashcode1 = SortedAtomIndexes[index1].y;
     bool shouldSwap = (hashcode0 <= hashcode1) == (bool)(DirectionChangeStride & index0);
 
     if (shouldSwap)
     {
-        uint2 temp = SortedParticleIndexes[index0];
-        SortedParticleIndexes[index0] = SortedParticleIndexes[index1];
-        SortedParticleIndexes[index1] = temp;
+        uint2 temp = SortedAtomIndexes[index0];
+        SortedAtomIndexes[index0] = SortedAtomIndexes[index1];
+        SortedAtomIndexes[index1] = temp;
     }
 }
 
@@ -77,7 +78,7 @@ void BitonicSort_Sort_GroupShared(uint3 Gid  : SV_GroupID,
 				 uint  GI   : SV_GroupIndex)
 {
     // Load shared data
-	GroupSharedData[GI] = SortedParticleIndexes[DTid.x];
+	GroupSharedData[GI] = SortedAtomIndexes[DTid.x];
 	GroupMemoryBarrierWithGroupSync();
 
 	// Sort the shared data
@@ -95,41 +96,41 @@ void BitonicSort_Sort_GroupShared(uint3 Gid  : SV_GroupID,
 	}
 
 	// Store shared data
-	SortedParticleIndexes[DTid.x] = GroupSharedData[GI];
+	SortedAtomIndexes[DTid.x] = GroupSharedData[GI];
 }
 
 
 
-#pragma kernel HashCodeToSortedParticleIndexes_Initialize
+#pragma kernel HashCodeToSortedAtomIndexes_Initialize
 [numthreads(512, 1, 1)]
-void HashCodeToSortedParticleIndexes_Initialize(uint3 id : SV_DispatchThreadID)
+void HashCodeToSortedAtomIndexes_Initialize(uint3 id : SV_DispatchThreadID)
 {  
-    HashCodeToSortedParticleIndexes[id.x * 2 + 0] = -1;
-    HashCodeToSortedParticleIndexes[id.x * 2 + 1] = -1;
+    HashCodeToSortedAtomIndexes[id.x * 2 + 0] = -1;
+    HashCodeToSortedAtomIndexes[id.x * 2 + 1] = -1;
 }
 
-// idea from https://developer.download.nvidia.com/assets/cuda/files/particles.pdf
-#pragma kernel HashCodeToSortedParticleIndexes_Bin
+// idea from https://developer.download.nvidia.com/assets/cuda/files/atoms.pdf
+#pragma kernel HashCodeToSortedAtomIndexes_Bin
 [numthreads(512, 1, 1)]
-void HashCodeToSortedParticleIndexes_Bin(uint3 id : SV_DispatchThreadID)
+void HashCodeToSortedAtomIndexes_Bin(uint3 id : SV_DispatchThreadID)
 {  
     uint index1 = id.x + 0;
     uint index2 = id.x + 1;
-    if (index2 >= AllParticles_Length) return;
+    if (index2 >= AllAtoms_Length) return;
 
-    uint hashcode1 = SortedParticleIndexes[index1].y;
-    uint hashcode2 = SortedParticleIndexes[index2].y;
+    uint hashcode1 = SortedAtomIndexes[index1].y;
+    uint hashcode2 = SortedAtomIndexes[index2].y;
 
     if (hashcode1 != hashcode2)
     {
-        HashCodeToSortedParticleIndexes[hashcode2 * 2 + 0] = index2; // particle start index
-        HashCodeToSortedParticleIndexes[hashcode1 * 2 + 1] = index1; // particle end index
+        HashCodeToSortedAtomIndexes[hashcode2 * 2 + 0] = index2; // atom start index
+        HashCodeToSortedAtomIndexes[hashcode1 * 2 + 1] = index1; // atom end index
     }
 
-    if (index1 == 0) // first particle
-        HashCodeToSortedParticleIndexes[hashcode1 * 2 + 0] = index1; // particle start index
-    if (index2 == AllParticles_Length - 1) // last particle
-        HashCodeToSortedParticleIndexes[hashcode2 * 2 + 1] = index2; // particle end index
+    if (index1 == 0) // first atom
+        HashCodeToSortedAtomIndexes[hashcode1 * 2 + 0] = index1; // atom start index
+    if (index2 == AllAtoms_Length - 1) // last atom
+        HashCodeToSortedAtomIndexes[hashcode2 * 2 + 1] = index2; // atom end index
 }
 
 
@@ -158,122 +159,412 @@ float2 RaySphereIntersect(float3 r0, float3 rd, float3 s0, float sr)
 	}
 }
 
-#pragma kernel RaycastHitParticles
+#pragma kernel RaycastHitAtoms
 [numthreads(512, 1, 1)]
-void RaycastHitParticles(uint3 id : SV_DispatchThreadID)
+void RaycastHitAtoms(uint3 id : SV_DispatchThreadID)
 {  
-    float3 particleWorldPos = AllParticles_Position[id.x].xyz;
-    float2 hitResult = RaySphereIntersect(RayStartWorldPos, RayDirection, particleWorldPos, ParticleRadius);
+    float3 atomWorldPos = AllAtoms[id.x].position;
+    float2 hitResult = RaySphereIntersect(RayStartWorldPos, RayDirection, atomWorldPos, AtomRadius);
     if (hitResult.x == -1 || hitResult.y == -1) return;
 
     int originalCount;
     InterlockedAdd(HitResults[0], 1, originalCount);
 
     HitResults[(originalCount + 1) * 4 + 0] = id.x;
-    HitResults[(originalCount + 1) * 4 + 1] = round(particleWorldPos.x * 1000);
-    HitResults[(originalCount + 1) * 4 + 2] = round(particleWorldPos.y * 1000);
-    HitResults[(originalCount + 1) * 4 + 3] = round(particleWorldPos.z * 1000);
+    HitResults[(originalCount + 1) * 4 + 1] = round(atomWorldPos.x * 1000);
+    HitResults[(originalCount + 1) * 4 + 2] = round(atomWorldPos.y * 1000);
+    HitResults[(originalCount + 1) * 4 + 3] = round(atomWorldPos.z * 1000);
 }
 
 
 
 
 float DeltaTime;
-int DragParticleIndex;
+int DragAtomIndex;
 float3 DragTargetWorldPosition;
 
 #pragma kernel Simulate_AdjustVelocity
 [numthreads(512, 1, 1)]
 void Simulate_AdjustVelocity(uint3 id : SV_DispatchThreadID)
 {
-    uint thisParticleIndex = id.x;
-    float3 thisParticlePosition = AllParticles_Position[thisParticleIndex].xyz;
-    float3 thisParticleVelocity = AllParticles_Velocity[thisParticleIndex].xyz;
+    uint thisAtomIndex = id.x;
 
+    // calculate relevant voxel cells hashcodes
     uint hashcodes[27];
     {
+        float3 thisAtomPosition = AllAtoms[thisAtomIndex].position;
         int i = 0;
         for (int x = -1; x <= 1; x++)
             for (int y = -1; y <= 1; y++)
                 for (int z = -1; z <= 1; z++)
                 {
-                    hashcodes[i] = GetHashCode(thisParticlePosition + float3(x,y,z) * ParticleInteractionMaxRadius);
+                    hashcodes[i] = GetHashCode(thisAtomPosition + float3(x,y,z) * AtomInteractionMaxRadius);
                     i++;
                 }
     }
 
-    float3 thisParticleForce = 0;
-    int countOfOtherParticlesInRange = 0;
+    // clear
+    ClearData(thisAtomIndex);
+
+
+    float3 thisAtomForce = 0;
+    int countOfInteractingAtoms = 0;
 
     for (int h = 0; h < 27; h++)
     {
-        uint sortedParticlesStartIndex = HashCodeToSortedParticleIndexes[hashcodes[h] * 2 + 0];
-        uint sortedParticlesEndIndex = HashCodeToSortedParticleIndexes[hashcodes[h] * 2 + 1]; 
-        if (sortedParticlesEndIndex == -1 || sortedParticlesStartIndex == -1) continue;
+        uint sortedAtomsStartIndex = HashCodeToSortedAtomIndexes[hashcodes[h] * 2 + 0];
+        uint sortedAtomsEndIndex = HashCodeToSortedAtomIndexes[hashcodes[h] * 2 + 1]; 
+        if (sortedAtomsEndIndex == -1 || sortedAtomsStartIndex == -1) continue;
 
-        for (uint sortedParticlesIndex = sortedParticlesStartIndex;
-            sortedParticlesIndex <= sortedParticlesEndIndex; 
-            sortedParticlesIndex++)
+        for (uint sortedAtomsIndex = sortedAtomsStartIndex;
+            sortedAtomsIndex <= sortedAtomsEndIndex; 
+            sortedAtomsIndex++)
         {
-            uint otherParticleIndex = SortedParticleIndexes[sortedParticlesIndex].x;
-            if (otherParticleIndex != thisParticleIndex)
+            uint otherAtomIndex = SortedAtomIndexes[sortedAtomsIndex].x;
+            if (otherAtomIndex != thisAtomIndex)
             {
-                float3 otherParticlePosition = AllParticles_Position[otherParticleIndex].xyz;
-                float3 direction = thisParticlePosition - otherParticlePosition;
-                float len = length(direction);
-                if (len <= ParticleInteractionMaxRadius)
-                {
-                    thisParticleForce += direction / len * 30 * (1.0 - min(1.0, len / ParticleInteractionMaxRadius));
-                    countOfOtherParticlesInRange++;
-                }
+                if (EvaluateForce(thisAtomIndex, otherAtomIndex) < 0)            
+                    countOfInteractingAtoms++;
             }
         }
     }
 
-    if (thisParticleIndex == DragParticleIndex)
+    if (thisAtomIndex == DragAtomIndex)
     {
-        float3 direction = DragTargetWorldPosition - thisParticlePosition;
+        float3 direction = DragTargetWorldPosition - thisAtomPosition;
         float len = length(direction);
-        thisParticleForce += direction / len * clamp(0, 10, len * 10);             
+        AllAtoms[thisAtomIndex].force += direction / len * clamp(0, 10, len * 10);             
     }   
     
  
     for (int index = 0; index < BoundingPlanes_Length; index++)
     {
         float4 plane = BoundingPlanes_NormalDistance[index];
-        float distanceToPlane = dot(thisParticlePosition.xyz, plane.xyz) + plane.w - ParticleRadius;
+        float distanceToPlane = dot(thisAtomPosition.xyz, plane.xyz) + plane.w - AtomRadius;
         if (distanceToPlane < 0)
         {
-            thisParticleForce += plane.xyz * clamp(abs(distanceToPlane), 0, 1) * 100;
-            //thisParticleVelocity = reflect(thisParticleVelocity.xyz, plane.xyz) * 0.8f;
+            AllAtoms[thisAtomIndex].force += plane.xyz * clamp(abs(distanceToPlane), 0, 1) * 100;
+            //thisAtomVelocity = reflect(thisAtomVelocity.xyz, plane.xyz) * 0.8f;
         }
     }
     
     float deltaTime = 0.05f;
 
-    thisParticleForce.y -= 20 * deltaTime;
+    AllAtoms[thisAtomIndex].force.y -= 20 * deltaTime;
 
-    thisParticleVelocity += thisParticleForce * deltaTime;
+    
 
 
     float damping = (1 - deltaTime * 0.2f);
-    thisParticleVelocity *= damping;
+    thisAtomVelocity *= damping;
 
     if (ClampTo2D)
-        thisParticleVelocity.z = 0;
+        thisAtomVelocity.z = 0;
 
-    AllParticles_Velocity[thisParticleIndex] = float4(thisParticleVelocity, countOfOtherParticlesInRange);
+    AllAtoms_Velocity[thisAtomIndex] = float4(thisAtomVelocity, countOfInteractingAtoms);
 }
 
 #pragma kernel Simulate_AdjustPosition
 [numthreads(512, 1, 1)]
 void Simulate_AdjustPosition(uint3 id : SV_DispatchThreadID)
 {
-    uint thisParticleIndex = id.x;
-    float3 thisParticlePosition = AllParticles_Position[thisParticleIndex].xyz;
+    uint thisAtomIndex = id.x;
+    float3 thisAtomPosition = AllAtoms_Position[thisAtomIndex].xyz;
 
     if (ClampTo2D)
-        thisParticlePosition.z = 0;
+        thisAtomPosition.z = 0;
+    
+    AllAtoms[thisAtomIndex].velocity += AllAtoms[thisAtomIndex].force * DeltaTime;
+    AllAtoms[thisAtomIndex].position += thisAtomPosition + AllAtoms[thisAtomIndex].velocity * DeltaTime;
+}
 
-    AllParticles_Position[thisParticleIndex].xyz = thisParticlePosition + AllParticles_Velocity[thisParticleIndex].xyz * DeltaTime;
+
+
+
+
+
+
+
+
+float2x3 from_deriv(float3 dij, float sc)
+{
+	float2x3 Dij;
+	float xx_  = dij.x*dij.x;
+	float yy_  = dij.y*dij.y;
+	float zz_  = dij.z*dij.z;
+	Dij._m12=-dij.x*dij.y;
+	Dij._m11=-dij.x*dij.z;
+	Dij._m10=-dij.y*dij.z;
+	Dij._m00=(yy_+zz_)   ;
+	Dij._m01=(xx_+zz_)   ;
+	Dij._m02=(xx_+yy_)   ;
+	Dij._m02 *= sc;
+	return Dij;
+}
+
+float3 dot_to(float2x3 Dij, float3 v)
+{
+	return float3(
+		dot(Dij._m00_m12_m11, v),
+		dot(Dij._m12_m01_m10, v),
+		dot(Dij._m11_m10_m02, v)
+	);
+}
+
+float2 finite_exp(float x, float beta, float Rcut)
+{
+    // Approximation of exp(-beta*x) with finite cutoff for x in [0,Rcut]
+    // x ... distance
+    // fr ... force output
+    // beta ... decay constant (rate of decay of exponential)
+    // Rcut ... cutoff radius
+    // exp(-beta*x) for x in [0,Rcut]
+    // y  = (1-C*x)^17 * (1-B*x)^2 
+    // dy = (1-C x)^16   (1-B*x)    (-2 B - 17 C + 19 B C x)
+    //printf( " x %g x/Rcut %g Rcut %g ", x, x/Rcut, Rcut );
+    const int k=17;
+    const float RN  = Rcut*0.5*k;
+    const float cor = 1.15/RN; 
+    const float C   = beta/k - cor;
+    const float B   = 1/Rcut; 
+    float y1 = 1-x*C; 
+    float y  = y1*y1;  // ^2
+    y=y*y; // ^4
+    y=y*y; // ^8
+    y=y*y; // ^16
+    float ycut = 1-x*B;
+    y*=ycut;
+    float fr = y* ( -2*B - k*C + (k+2)*B*C*x );
+    y*=ycut;
+    return float2(y*y1, fr);
+}
+
+float4 d_rot_exact(float4 quaternion, float dt, float3 omega)
+{
+    float r2   = dot(omega, omega);
+    if(r2>0){
+        float norm = sqrt( r2 );
+        float a    = dt * norm * 0.5;
+        float sa   = sin( a )/norm;  // we normalize it here to save multiplications
+        float ca   = cos( a );
+        omega *= sa; // hat * sin(a)
+        return float4(
+             omega.x*quaternion.w + omega.y*quaternion.z - omega.z*quaternion.y + ca*quaternion.x,
+            -omega.x*quaternion.z + omega.y*quaternion.w + omega.z*quaternion.x + ca*quaternion.y,
+             omega.x*quaternion.y - omega.y*quaternion.x + omega.z*quaternion.w + ca*quaternion.z,
+            -omega.x*quaternion.x - omega.y*quaternion.y - omega.z*quaternion.z + ca*quaternion.w
+        );
+    }
+};
+
+
+
+
+void Prepare(int atomIndex)
+{
+    // clear forces and energies
+    AllAtoms[atomIndex].force = 0;
+    AllAtoms[atomIndex].torque = 0;
+    for (int halfBondIndex; halfBondIndex < HALF_BOND_MAX_COUNT; halfBondIndex++)
+    {
+        AllAtoms[atomIndex].halfBonds[halfBondIndex].force = 0;
+        AllAtoms[atomIndex].halfBonds[halfBondIndex].energy = 0;
+    }
+
+    // cache data    
+    float4x4 localToWorldRotation = quaternion_to_matrix(AllAtoms[atomIndex].rotation);
+    for (int halfBondIndex; halfBondIndex < HALF_BOND_MAX_COUNT; halfBondIndex++)
+    {
+        AllAtoms[atomIndex].halfBonds[halfBondIndex].directionWorldSpace = mul(localToWorldRotation, AllAtoms[atomIndex].halfBonds[halfBondIndex].directionLocalSpace);
+    }
+}
+
+float EvaluateForce(int thisAtomIIndex, int otherAtomIndex)
+{
+	Atom thisAtom = AllAtoms[thisAtomIIndex];
+	Atom otherAtom = AllAtoms[otherAtomIndex];
+
+	// mixing rules for L-J interaction  https://en.wikipedia.org/wiki/Combining_rules
+	float combined_aMorse = thisAtom.aMorse * otherAtom.aMorse;
+	float combined_bMorse = thisAtom.bMorse + otherAtom.bMorse;
+	float combined_rbond0 = thisAtom.rbond0 + otherAtom.rbond0;
+    float combined_Epz = thisAtom.Epz;
+    
+    // This is modified from RARFFarr
+    const float RcutMax = 5.0; // [A]
+    const float R2cut = RcutMax*RcutMax;
+    const float RcutCap = 3.0; // [A]
+    const float R2cutCap = RcutCap*RcutCap;
+    const bool bRepelCaps = true;
+    const bool bDonorAcceptorCap = false;
+    const float lcap       =   1.0;
+    const float aMorseCap  =   1.0;
+    const float bMorseCap  =  -0.7;
+    #define R2SAFE  1.0e-8f
+
+	// subtract atom positions, check if within cutoff
+	float3 dij = otherAtom.position - thisAtom.position;
+	float r2 = dot(dij, dij);
+	if (r2 > R2cut) return 0; // cutoff
+	float rij = sqrt(r2);
+	float3 hij = dij*(1/rij);
+
+	// Evaluate **radial** Potential and Force
+	// https://en.wikipedia.org/wiki/Morse_potential
+	// potential composed frowm two exponetials
+	// one is atractive decaying slowly, represeting electron which want to share two atoms (forming a bond)
+	// the other is repulsive, decaying fast, representing electron which want to avoid having overlap which other electrons which already are near the atomic nuclei 
+	// E  = a*( exp( -b*(r-r0) ) - 1 )^2
+	//float expr = exp( -type.bMorse*(rij - type.rbond0); // original version
+	float2 r  = finite_exp( rij - combined_rbond0, -combined_bMorse, RcutMax-combined_rbond0 );
+    float expr = r.x;
+	float dexpr = r.y;
+	float E     =    combined_aMorse*expr* expr; // repuslive part of interaction
+	float fr    =  2*combined_aMorse*expr*dexpr; // repulsive force
+	float Eb    = -2*combined_aMorse*      expr; // bonding energy (attractive part of interactions)
+	float frb   = -2*combined_aMorse*     dexpr; // bonding force
+	float3 force = hij*fr;
+
+	// =================== Evaluate angular part of potential (and force)
+
+	// matrix derivative cosine(hi,hj) = 1/|hi||hj| d/dhi (hi.hj
+	// in short - you give it direction, it gives you force
+ 	// Evaluate angular derivative matrix
+	float2x3 Dij = from_deriv(dij, 1/(rij*r2));
+
+	// Interactions between all pairs of bonds on that atom 
+	// all half-bonds on atom A
+	for(int thisAtomHaldBondIndex=0; thisAtomHaldBondIndex<thisAtom.numUsedHalfBonds; thisAtomHaldBondIndex++)
+	{
+		const float3 hi = thisAtom.halfBonds[thisAtomHaldBondIndex].directionWorldSpace;
+		float ci       = dot(hij, hi);   // ci = <hi|hij>
+
+		// we have 3 cosines of 3 anges
+		// ci  = cos(hi,hij)
+		// cj  = cos(hj,hij)
+		// cij = cos(hi,hj)
+		// where:
+		// hi ... direction of bond on atom i
+		// hj ... direction of bond on atom j
+		// hij ... direction of bond between atoms i and j (between centers of atoms)
+
+		if (ci < 0)       // cannot bond if in oposite direction (other half plane)
+			continue; 
+
+		bool capi = thisAtom.halfBonds[thisAtomHaldBondIndex].cap >= 0; // if bond is capped it does not bond any more
+
+		// all half-bonds on atom B
+		for(int otherAtomHaldBondIndex=0; otherAtomHaldBondIndex<otherAtom.numUsedHalfBonds; otherAtomHaldBondIndex++)
+		{
+			const float3 hj = otherAtom.halfBonds[otherAtomHaldBondIndex].directionWorldSpace;
+			// Interaction between capped (i.e. passivated) bonds - Only repulsive
+			if( bDonorAcceptorCap && capi && otherAtom.halfBonds[otherAtomHaldBondIndex].cap>=0) continue;
+			// ---- repulsion of capping atoms on both bonds (i,j)
+			if( bRepelCaps && capi && otherAtom.halfBonds[otherAtomHaldBondIndex].cap>=0)
+			{
+				float3 pi = thisAtom.position + hi*lcap;
+				float3 pj = otherAtom.position + hj*lcap;
+				float3  dij   = pi-pj;
+				float r2    = dot(dij, dij) + R2SAFE;
+				if( r2<R2cutCap ){ 
+					// Morse
+					float rij   = sqrt( r2 );
+					//float e     = aMorseCap * exp( bMorseCap*rij );
+					//float3  f     = dij * (-bMorseCap * e / rij);
+					//  ----- only the repulsive part of the Morse potential
+					float2 r     = aMorseCap * finite_exp( rij, -bMorseCap, RcutCap );   
+                    float e = r.x;
+	                float frc = r.y;
+					float3  f     = dij * (aMorseCap * frc / rij );     
+					E+=e;
+					force += f;
+					f *= 1.0/lcap;
+					thisAtom.halfBonds[thisAtomHaldBondIndex].force += f;
+					//otherAtom.halfBonds[otherAtomHaldBondIndex].force -= f;
+					continue;
+				}
+			}
+
+			// ---- Here starts the actual angular enery evaluation for pair of half-bonds
+			// cosines of angles between the bonds
+			float cj       = dot(hij, hj);  // cj  = <hj|hij>
+			float cij      = dot(hi, hj);  // cij = <hj|hi>
+			if(cj>0||cij>0) continue;   // check if bonds oriented toward each other
+
+			// Angular potential     E =  (cos(ai)*cos(aj)*cos(aij)) ^ 4
+			float cc  = ci*cj*cij;
+			float cc2 = cc*cc;
+			float e   = cc2*cc2;   // Angular Energy 
+			float de  = 4*cc2*cc;  // Angular derivative
+
+			// Total energy of bond is product of radial and angular part
+			// this can be imaggined that atoms have to be ind proper distance (i.e. radial part)
+			// but also that the half-bonds have to be properly oriented (depends of cosises ci,cj,cij)
+			float eEb = e * Eb; // mutiply by radial bond energy
+			thisAtom.halfBonds[thisAtomHaldBondIndex].energy += eEb*0.5;
+			//otherAtom.halfBonds[otherAtomHaldBondIndex].energy += eEb*0.5;
+			E      += eEb;
+
+			// Now we have to compute forces by derivative of total energy (eEb=e*Eb) 
+			// with respect to all input variables (degrees-of-freedom) using chain derivative rule
+			float deEb = de*Eb;
+			float cicj = ci*cj;
+			float cijcideEb = cij*ci*deEb; // temp variables for chain derivative rule to compute force from energy experssion
+			float cijcjdeEb = cij*cj*deEb;
+			float frbe = frb*e;
+			thisAtom.halfBonds[thisAtomHaldBondIndex].force += hij * (-cijcjdeEb); 
+			thisAtom.halfBonds[thisAtomHaldBondIndex].force += hj * (-cicj*deEb);
+			//otherAtom.halfBonds[otherAtomHaldBondIndex].force += hij * (-cijcideEb); 
+			//otherAtom.halfBonds[otherAtomHaldBondIndex].force += hi * (-cicj*deEb);
+
+			float3 hv;
+			hv = dot_to(Dij, hi); 
+			force += hv * (cijcjdeEb);
+			hv = dot_to(Dij, hj); 
+			force += hv * (cijcideEb);
+
+			force += hij * (frb*e);
+		}
+	}
+
+	// pi-pi interactions ( trying to align pi-orbitals in aromatic molecules, planarize them )
+	// for examplpe benzene molecule-molecule orbital
+	if (thisAtom.numUsedHalfBonds == 3 && otherAtom.numUsedHalfBonds == 3)
+	{
+		// align pz-pz in sp2-sp2 pair
+		const float3 hi = thisAtom.halfBonds[3].directionWorldSpace;
+		const float3 hj = otherAtom.halfBonds[3].directionWorldSpace;
+		float cdot = dot(hi, hj); // we try to make these to pi-orbitals collinear
+		//float E = Epz * ( cdot*cdot ); // why I do no save energy ?
+		float de = -2*cdot*combined_Epz*Eb;
+		thisAtom.halfBonds[3].force += hj * de;
+		//otherAtom.halfBonds[3].force += hi * de;
+		//force      // TODO: proper derivatives of energy?
+	}
+
+	// Accumulate atomic forces
+	AllAtoms[thisAtomIIndex].force += force;
+	//AllAtoms[otherAtomIndex].force -= force;
+
+	return E;
+}
+
+
+void Move(int atomIndex, float deltaTime, float damp)
+{
+    // evalute torques
+    for (int halfBondIndex; halfBondIndex < HALF_BOND_MAX_COUNT; halfBondIndex++)
+    {
+        float3 force = AllAtoms[atomIndex].halfBonds[halfBondIndex].force;
+        float3 direction = AllAtoms[atomIndex][halfBondIndex].directionWorldSpace;
+        force += direction * -dot(force, direction); // orthogonalize
+        AllAtoms[atomIndex].torque += cross(direction, force);
+    }
+
+    const float invRotMass = 2.0;
+
+    AllAtoms[atomIndex].velocity = damp * AllAtoms[atomIndex].velocity + deltaTime * AllAtoms[atomIndex].force;
+    AllAtoms[atomIndex].omega = damp * AllAtoms[atomIndex].omega + (deltaTime * invRotMass) * AllAtoms[atomIndex].torque;
+    AllAtoms[atomIndex].position += AllAtoms[atomIndex].velocity * deltaTime;
+    AllAtoms[atomIndex].rotation = normalize(d_rot_exact(AllAtoms[atomIndex].rotation, deltaTime, AllAtoms[atomIndex].omega));
 }

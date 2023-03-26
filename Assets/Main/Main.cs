@@ -78,26 +78,59 @@ public class Main : MonoBehaviour
 	Vector3? DraggingAtomWorldPos;
 
 
-// 	static const double sp3_hs[] = {
-// 1.000000000000,  0.00000000000,  0.00000000000,
-// -0.33380685923,  0.94264149109,  0.00000000000,
-// -0.33380685923, -0.47132074554, -0.81635147794,
-// -0.33380685923, -0.47132074554, +0.81635147794
-// };
 
-// 	static const double sp2_hs[] = {
-// +1.000000000000, -0.00000000000,  0.00000000000,
-// -0.500000000000, +0.86602540378,  0.00000000000,
-// -0.500000000000, -0.86602540378,  0.00000000000,
-//  0.00000000000,   0.00000000000,  1.00000000000     // electron - can be repulsive
-// };
 
-// 	static const double sp1_hs[] = {
-// +1.000000000000,  0.00000000000,  0.00000000000,
-// -1.000000000000,  0.00000000000,  0.00000000000,
-//  0.000000000000,  1.00000000000,  0.00000000000,    // electron - can be repulsive
-//  0.000000000000,  0.00000000000,  1.00000000000     // electron - can be repulsive
-// };
+	[StructLayout(LayoutKind.Sequential)]
+	public struct Atom
+	{
+		public Vector3 position; 
+		public Vector4 rotation; 
+		public Vector3 force; 
+		public Vector3 torque; 
+		public Vector3 omegas; 
+
+		public float Epz;
+		public float rbond0;
+		public float aMorse;
+		public float bMorse;
+
+		public HalfBond halfBonds_0;
+		public HalfBond halfBonds_1;
+		public HalfBond halfBonds_2;
+		public HalfBond halfBonds_3;
+	};
+
+	[StructLayout(LayoutKind.Sequential)]
+	public struct HalfBond
+	{
+		public Vector3 directionWorldSpace;
+		public Vector3 directionLocalSpace;
+		public Vector3 force;
+		public Vector3 energy;
+		public int cap;
+	};
+
+
+	static Vector3[] sp3_hs = new [] {
+		new Vector3(1.000000000000f,  0.00000000000f,  0.00000000000f),
+		new Vector3(-0.33380685923f,  0.94264149109f,  0.00000000000f),
+		new Vector3(-0.33380685923f, -0.47132074554f, -0.81635147794f),
+		new Vector3(-0.33380685923f, -0.47132074554f, +0.81635147794f),
+	};
+
+	static Vector3[] sp2_hs = new [] {
+		new Vector3(+1.000000000000f, -0.00000000000f,  0.00000000000f),
+		new Vector3(-0.500000000000f, +0.86602540378f,  0.00000000000f),
+		new Vector3(-0.500000000000f, -0.86602540378f,  0.00000000000f),
+		new Vector3(0.00000000000f,   0.00000000000f,  1.00000000000f), // electron - can be repulsive
+	};
+
+	static Vector3[] sp1_hs = new [] {
+		new Vector3(+1.000000000000f,  0.00000000000f,  0.00000000000f),
+		new Vector3(-1.000000000000f,  0.00000000000f,  0.00000000000f),
+		new Vector3(0.000000000000f,  1.00000000000f,  0.00000000000f), // electron - can be repulsive
+		new Vector3(0.000000000000f,  0.00000000000f,  1.00000000000f), // electron - can be repulsive
+	};
 
 	// Start is called before the first frame update
 	void Start()
@@ -421,7 +454,7 @@ public class Main : MonoBehaviour
 		if (ShouldRunSimulation)
 		{
 			{
-				var simulate = ConfigComputeShader.FindKernel("Simulate_AdjustVelocity");
+				var simulate = ConfigComputeShader.FindKernel("Simulate_Prepare");
 				ConfigComputeShader.SetFloat("DeltaTime", 0.01f);
 				ConfigComputeShader.SetFloat("AtomRadius", atomRadius);
 				ConfigComputeShader.SetBuffer(simulate, "AllAtoms_Position", AllAtoms_Position);
@@ -438,7 +471,24 @@ public class Main : MonoBehaviour
 			}
 
 			{
-				var simulate = ConfigComputeShader.FindKernel("Simulate_AdjustPosition");
+				var simulate = ConfigComputeShader.FindKernel("Simulate_EvaluateForces");
+				ConfigComputeShader.SetFloat("DeltaTime", 0.01f);
+				ConfigComputeShader.SetFloat("AtomRadius", atomRadius);
+				ConfigComputeShader.SetBuffer(simulate, "AllAtoms_Position", AllAtoms_Position);
+				ConfigComputeShader.SetBuffer(simulate, "AllAtoms_Velocity", AllAtoms_Velocity);
+				ConfigComputeShader.SetBuffer(simulate, "AllAtoms_Rotation", AllAtoms_Rotation);
+				ConfigComputeShader.SetInt("BoundingPlanes_Length", BoundingPlanes_Length);
+				ConfigComputeShader.SetBuffer(simulate, "BoundingPlanes_NormalDistance", BoundingPlanes_NormalDistance);
+				ConfigComputeShader.SetFloat("AtomInteractionMaxRadius", AtomInteractionMaxRadius);
+				ConfigComputeShader.SetBuffer(simulate, "HashCodeToSortedAtomIndexes", HashCodeToSortedAtomIndexes);
+				ConfigComputeShader.SetInt("HashCodeToSortedAtomIndexes_Length", HashCodeToSortedAtomIndexes_Length);
+				ConfigComputeShader.SetBuffer(simulate, "SortedAtomIndexes", SortedAtomIndexes);
+				ConfigComputeShader.SetBool("ClampTo2D", ShouldClampAtomsToXyPlane);
+				ConfigComputeShader.Dispatch(simulate, AllAtoms_Length / 512, 1, 1);
+			}
+
+			{
+				var simulate = ConfigComputeShader.FindKernel("Simulate_Move");
 				ConfigComputeShader.SetFloat("DeltaTime", 0.01f);
 				ConfigComputeShader.SetBuffer(simulate, "AllAtoms_Position", AllAtoms_Position);
 				ConfigComputeShader.SetBuffer(simulate, "AllAtoms_Velocity", AllAtoms_Velocity);

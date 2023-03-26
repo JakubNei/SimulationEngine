@@ -1,4 +1,5 @@
 
+
 struct HalfBond
 {	
 	float3 directionWorldSpace; // direction of half-bond in world space, is calculated from directionLocalSpace before every step
@@ -8,6 +9,7 @@ struct HalfBond
 	int cap; // optimization, index of capping atom (if any), for example hydrogen, because hydrogen has only one bond, capping atom has different optimized code path
 };
 
+#define HALF_BOND_MAX_COUNT 4
 
 struct Atom 
 {
@@ -24,8 +26,6 @@ struct Atom
     float bMorse;// = -0.7; // interaction decay strenght (b in E=A*exp(-b*r)  )
 
 	int numUsedHalfBonds; // how many of the half-bonds atom has
-    #define HALF_BOND_MAX_COUNT 4
-	HalfBond halfBonds[HALF_BOND_MAX_COUNT];
 };
 
 

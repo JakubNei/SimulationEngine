@@ -447,17 +447,17 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 54125e88c529cda4999c149b52144337, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  ConfigParticlesMaterial: {fileID: 2100000, guid: afcdb6e80eb901041aee2b08207772f1, type: 2}
-  ConfigParticlesMaterialWithShadows: {fileID: 2100000, guid: 68d24d01b7c1c8b4faa3ca12432b661a, type: 2}
-  ConfigParticleMesh: {fileID: 289301614986012343, guid: 0755efff5ea82f34bacb0ffb4528c934, type: 3}
+  ConfigAtomsMaterial: {fileID: 2100000, guid: afcdb6e80eb901041aee2b08207772f1, type: 2}
+  ConfigAtomsMaterialWithShadows: {fileID: 2100000, guid: 68d24d01b7c1c8b4faa3ca12432b661a, type: 2}
+  ConfigAtomMesh: {fileID: 289301614986012343, guid: 0755efff5ea82f34bacb0ffb4528c934, type: 3}
   ConfigComputeShader: {fileID: 7200000, guid: e23a68e826e45e143bd59f862a9086ca, type: 3}
   ConfigBoundingPlanes: {fileID: 1747066716}
-  ShouldDrawParticles: 1
-  ShouldDrawParticlesShadows: 1
-  ShouldClampParticlesToXyPlane: 1
+  ShouldDrawAtoms: 1
+  ShouldDrawAtomsShadows: 1
+  ShouldClampAtomsToXyPlane: 1
   ShouldRunBitonicSort: 1
   ShouldUseBitonicSortGroupSharedMemory: 1
-  ShouldAllowPlayerParticleDrag: 1
+  ShouldAllowPlayerAtomDrag: 1
   ShouldRunSimulation: 1
 --- !u!4 &1402528688
 Transform:

@@ -23,9 +23,10 @@ public class Main : MonoBehaviour
 	//int AllAtoms_Length = 1024 * 64; // 65k
 	int AllAtoms_Length = 2 * 64 * 64;
 
-	ComputeBuffer AllAtoms_Position;
-	ComputeBuffer AllAtoms_Velocity;
-	ComputeBuffer AllAtoms_Rotation;
+	ComputeBuffer AllAtoms;
+
+	int AllHalfBonds_Length = 4;
+	ComputeBuffer AllHalfBonds;
 
 	// index count per instance, instance count, start index location, base vertex location, start instance location
 	ComputeBuffer IndirectArguments_DrawMeshAtoms;
@@ -77,27 +78,22 @@ public class Main : MonoBehaviour
 	uint? DraggingAtomIndex;
 	Vector3? DraggingAtomWorldPos;
 
-
-
-
 	[StructLayout(LayoutKind.Sequential)]
 	public struct Atom
 	{
-		public Vector3 position; 
-		public Vector4 rotation; 
-		public Vector3 force; 
-		public Vector3 torque; 
-		public Vector3 omegas; 
+		public Vector3 position;
+		public Quaternion rotation;
+		public Vector3 force;
+		public Vector3 torque;
+		public Vector3 velocity;
+		public Vector3 omegas;
 
 		public float Epz;
 		public float rbond0;
 		public float aMorse;
 		public float bMorse;
 
-		public HalfBond halfBonds_0;
-		public HalfBond halfBonds_1;
-		public HalfBond halfBonds_2;
-		public HalfBond halfBonds_3;
+		public int numUsedHalfBonds;
 	};
 
 	[StructLayout(LayoutKind.Sequential)]
@@ -110,22 +106,21 @@ public class Main : MonoBehaviour
 		public int cap;
 	};
 
-
-	static Vector3[] sp3_hs = new [] {
+	static Vector3[] sp3_hs = new[] {
 		new Vector3(1.000000000000f,  0.00000000000f,  0.00000000000f),
 		new Vector3(-0.33380685923f,  0.94264149109f,  0.00000000000f),
 		new Vector3(-0.33380685923f, -0.47132074554f, -0.81635147794f),
 		new Vector3(-0.33380685923f, -0.47132074554f, +0.81635147794f),
 	};
 
-	static Vector3[] sp2_hs = new [] {
+	static Vector3[] sp2_hs = new[] {
 		new Vector3(+1.000000000000f, -0.00000000000f,  0.00000000000f),
 		new Vector3(-0.500000000000f, +0.86602540378f,  0.00000000000f),
 		new Vector3(-0.500000000000f, -0.86602540378f,  0.00000000000f),
 		new Vector3(0.00000000000f,   0.00000000000f,  1.00000000000f), // electron - can be repulsive
 	};
 
-	static Vector3[] sp1_hs = new [] {
+	static Vector3[] sp1_hs = new[] {
 		new Vector3(+1.000000000000f,  0.00000000000f,  0.00000000000f),
 		new Vector3(-1.000000000000f,  0.00000000000f,  0.00000000000f),
 		new Vector3(0.000000000000f,  1.00000000000f,  0.00000000000f), // electron - can be repulsive
@@ -143,65 +138,56 @@ public class Main : MonoBehaviour
 
 		// force 64 for num threads
 		AllAtoms_Length = Mathf.Max(1, Mathf.CeilToInt(AllAtoms_Length / 512)) * 512;
+		AllHalfBonds_Length = AllAtoms_Length * 4;
+
 		HashCodeToSortedAtomIndexes_Length = Mathf.Max(512, Mathf.CeilToInt(HashCodeToSortedAtomIndexes_Length / 512)) * 512;
 
 		HashCodeToSortedAtomIndexes = new ComputeBuffer(HashCodeToSortedAtomIndexes_Length * 2, Marshal.SizeOf(typeof(uint)), ComputeBufferType.Structured);
 
 		SortedAtomIndexes = new ComputeBuffer(AllAtoms_Length, Marshal.SizeOf(typeof(uint)) * 2, ComputeBufferType.Structured);
 
-		AllAtoms_Position = new ComputeBuffer(AllAtoms_Length, Marshal.SizeOf(typeof(float)) * 4, ComputeBufferType.Structured);
-		var positions = new List<float>(AllAtoms_Length * 3);
+		AllAtoms = new ComputeBuffer(AllAtoms_Length, Marshal.SizeOf(typeof(Atom)), ComputeBufferType.Structured);
+		AllHalfBonds = new ComputeBuffer(AllHalfBonds_Length, Marshal.SizeOf(typeof(HalfBond)), ComputeBufferType.Structured);
+
 
 		{
 			var countOnEdge = Mathf.CeilToInt(Mathf.Pow(AllAtoms_Length, 1 / 2.0f));
 			var gridSizeOnEdge = interactionMaxRadius * countOnEdge;
 			int i = 0;
+			var allAtoms = new List<Atom>(AllAtoms_Length);
+			var allHalfBonds = new List<HalfBond>(AllHalfBonds_Length);
 			for (int x = 0; i < AllAtoms_Length && x < countOnEdge; x++)
+			{
 				for (int y = 0; i < AllAtoms_Length && y < countOnEdge; y++)
 				{
+					var atom = new Atom();
+
 					var p = new Vector3(x * interactionMaxRadius, y * interactionMaxRadius, 0);
 					p += Random.onUnitSphere * interactionMaxRadius;
 					if (ShouldClampAtomsToXyPlane)
 						p.z = 0;
 					else
 						p.z *= 0.1f;
+					atom.position = p;
+					atom.velocity = Vector3.zero;
+					atom.rotation = Random.rotation;
+					atom.numUsedHalfBonds = 4;
 
-					positions.Add(p.x);
-					positions.Add(p.y);
-					positions.Add(p.z);
-					positions.Add(0);
+					for (int h = 0; h < 4; h++)
+					{
+						allHalfBonds.Add(new HalfBond()
+						{
+							directionLocalSpace = sp3_hs[h],
+						});
+					}
+
 					i++;
+					allAtoms.Add(atom);
 				}
-
+			}
+			AllAtoms.SetData(allAtoms);
+			AllHalfBonds.SetData(allHalfBonds);
 		}
-		AllAtoms_Position.SetData(positions);
-
-		AllAtoms_Velocity = new ComputeBuffer(AllAtoms_Length, Marshal.SizeOf(typeof(float)) * 4, ComputeBufferType.Structured);
-		var velocities = new List<float>(AllAtoms_Length * 3);
-		for (int i = 0; i < AllAtoms_Length; i++)
-		{
-			//var v = Random.insideUnitSphere * 0.1f;
-			var v = Vector3.zero;
-			velocities.Add(v.x);
-			velocities.Add(v.y);
-			velocities.Add(v.z);
-			velocities.Add(0);
-		}
-		AllAtoms_Velocity.SetData(velocities);
-
-
-		AllAtoms_Rotation = new ComputeBuffer(AllAtoms_Length, Marshal.SizeOf(typeof(float)) * 4, ComputeBufferType.Structured);
-		var rotations = new List<float>(AllAtoms_Length * 4);
-		for (int i = 0; i < AllAtoms_Length; i++)
-		{
-			var v = Random.rotation;
-			rotations.Add(v.x);
-			rotations.Add(v.y);
-			rotations.Add(v.z);
-			rotations.Add(v.w);
-		}
-		AllAtoms_Rotation.SetData(rotations);
-
 
 		IndirectArguments_DrawMeshAtoms = new ComputeBuffer(5, sizeof(int), ComputeBufferType.IndirectArguments);
 		IndirectArguments_DrawMeshAtoms.SetData(new uint[] { ConfigAtomMesh.GetIndexCount(0), (uint)AllAtoms_Length, ConfigAtomMesh.GetIndexStart(0), ConfigAtomMesh.GetBaseVertex(0), 0 });
@@ -217,10 +203,10 @@ public class Main : MonoBehaviour
 
 	void OnDestroy()
 	{
-		AllAtoms_Position?.Dispose();
-		AllAtoms_Position = null;
-		AllAtoms_Velocity?.Dispose();
-		AllAtoms_Velocity = null;
+		AllAtoms?.Dispose();
+		AllAtoms = null;
+		AllHalfBonds?.Dispose();
+		AllHalfBonds = null;
 		IndirectArguments_DrawMeshAtoms?.Dispose();
 		IndirectArguments_DrawMeshAtoms = null;
 		SortedAtomIndexes?.Dispose();
@@ -298,7 +284,8 @@ public class Main : MonoBehaviour
 				var bitonicSort = ConfigComputeShader.FindKernel("BitonicSort_Initialize");
 				ConfigComputeShader.SetFloat("AtomInteractionMaxRadius", AtomInteractionMaxRadius);
 				ConfigComputeShader.SetInt("HashCodeToSortedAtomIndexes_Length", HashCodeToSortedAtomIndexes_Length);
-				ConfigComputeShader.SetBuffer(bitonicSort, "AllAtoms_Position", AllAtoms_Position);
+				ConfigComputeShader.SetInt("AllAtoms_Length", AllAtoms_Length);
+				ConfigComputeShader.SetBuffer(bitonicSort, "AllAtoms", AllAtoms);
 				ConfigComputeShader.SetBuffer(bitonicSort, "SortedAtomIndexes", SortedAtomIndexes);
 				ConfigComputeShader.Dispatch(bitonicSort, AllAtoms_Length / 512, 1, 1);
 			}
@@ -339,9 +326,9 @@ public class Main : MonoBehaviour
 
 				{
 					var hashCodeToSortedAtomIndexes_Bin = ConfigComputeShader.FindKernel("HashCodeToSortedAtomIndexes_Bin");
-					ConfigComputeShader.SetBuffer(hashCodeToSortedAtomIndexes_Bin, "AllAtoms_Position", AllAtoms_Position);
 					ConfigComputeShader.SetFloat("AtomInteractionMaxRadius", AtomInteractionMaxRadius);
 					ConfigComputeShader.SetInt("AllAtoms_Length", AllAtoms_Length);
+					ConfigComputeShader.SetBuffer(hashCodeToSortedAtomIndexes_Bin, "AllAtoms", AllAtoms);
 					ConfigComputeShader.SetBuffer(hashCodeToSortedAtomIndexes_Bin, "HashCodeToSortedAtomIndexes", HashCodeToSortedAtomIndexes);
 					ConfigComputeShader.SetInt("HashCodeToSortedAtomIndexes_Length", HashCodeToSortedAtomIndexes_Length);
 					ConfigComputeShader.SetBuffer(hashCodeToSortedAtomIndexes_Bin, "SortedAtomIndexes", SortedAtomIndexes);
@@ -362,8 +349,8 @@ public class Main : MonoBehaviour
 			ConfigComputeShader.SetFloat("AtomRadius", atomRadius);
 			ConfigComputeShader.SetVector("RayStartWorldPos", ray.origin);
 			ConfigComputeShader.SetVector("RayDirection", ray.direction);
-			ConfigComputeShader.SetBuffer(raycastHitAtoms, "HitResults", hitResult);
-			ConfigComputeShader.SetBuffer(raycastHitAtoms, "AllAtoms_Position", AllAtoms_Position);
+			ConfigComputeShader.SetInt("AllAtoms_Length", AllAtoms_Length);
+			ConfigComputeShader.SetBuffer(raycastHitAtoms, "AllAtoms", AllAtoms);
 			ConfigComputeShader.Dispatch(raycastHitAtoms, AllAtoms_Length / 512, 1, 1);
 
 			AsyncGPUReadback.Request(hitResult, (result) =>
@@ -457,9 +444,10 @@ public class Main : MonoBehaviour
 				var simulate = ConfigComputeShader.FindKernel("Simulate_Prepare");
 				ConfigComputeShader.SetFloat("DeltaTime", 0.01f);
 				ConfigComputeShader.SetFloat("AtomRadius", atomRadius);
-				ConfigComputeShader.SetBuffer(simulate, "AllAtoms_Position", AllAtoms_Position);
-				ConfigComputeShader.SetBuffer(simulate, "AllAtoms_Velocity", AllAtoms_Velocity);
-				ConfigComputeShader.SetBuffer(simulate, "AllAtoms_Rotation", AllAtoms_Rotation);
+				ConfigComputeShader.SetInt("AllAtoms_Length", AllAtoms_Length);
+				ConfigComputeShader.SetBuffer(simulate, "AllAtoms", AllAtoms);
+				ConfigComputeShader.SetInt("AllHalfBonds_Length", AllHalfBonds_Length);
+				ConfigComputeShader.SetBuffer(simulate, "AllHalfBonds", AllHalfBonds);
 				ConfigComputeShader.SetInt("BoundingPlanes_Length", BoundingPlanes_Length);
 				ConfigComputeShader.SetBuffer(simulate, "BoundingPlanes_NormalDistance", BoundingPlanes_NormalDistance);
 				ConfigComputeShader.SetFloat("AtomInteractionMaxRadius", AtomInteractionMaxRadius);
@@ -474,9 +462,10 @@ public class Main : MonoBehaviour
 				var simulate = ConfigComputeShader.FindKernel("Simulate_EvaluateForces");
 				ConfigComputeShader.SetFloat("DeltaTime", 0.01f);
 				ConfigComputeShader.SetFloat("AtomRadius", atomRadius);
-				ConfigComputeShader.SetBuffer(simulate, "AllAtoms_Position", AllAtoms_Position);
-				ConfigComputeShader.SetBuffer(simulate, "AllAtoms_Velocity", AllAtoms_Velocity);
-				ConfigComputeShader.SetBuffer(simulate, "AllAtoms_Rotation", AllAtoms_Rotation);
+				ConfigComputeShader.SetInt("AllAtoms_Length", AllAtoms_Length);
+				ConfigComputeShader.SetBuffer(simulate, "AllAtoms", AllAtoms);
+				ConfigComputeShader.SetInt("AllHalfBonds_Length", AllHalfBonds_Length);
+				ConfigComputeShader.SetBuffer(simulate, "AllHalfBonds", AllHalfBonds);
 				ConfigComputeShader.SetInt("BoundingPlanes_Length", BoundingPlanes_Length);
 				ConfigComputeShader.SetBuffer(simulate, "BoundingPlanes_NormalDistance", BoundingPlanes_NormalDistance);
 				ConfigComputeShader.SetFloat("AtomInteractionMaxRadius", AtomInteractionMaxRadius);
@@ -490,8 +479,10 @@ public class Main : MonoBehaviour
 			{
 				var simulate = ConfigComputeShader.FindKernel("Simulate_Move");
 				ConfigComputeShader.SetFloat("DeltaTime", 0.01f);
-				ConfigComputeShader.SetBuffer(simulate, "AllAtoms_Position", AllAtoms_Position);
-				ConfigComputeShader.SetBuffer(simulate, "AllAtoms_Velocity", AllAtoms_Velocity);
+				ConfigComputeShader.SetInt("AllAtoms_Length", AllAtoms_Length);
+				ConfigComputeShader.SetBuffer(simulate, "AllAtoms", AllAtoms);
+				ConfigComputeShader.SetInt("AllHalfBonds_Length", AllHalfBonds_Length);
+				ConfigComputeShader.SetBuffer(simulate, "AllHalfBonds", AllHalfBonds);
 				ConfigComputeShader.SetFloat("AtomInteractionMaxRadius", AtomInteractionMaxRadius);
 				ConfigComputeShader.SetBuffer(simulate, "HashCodeToSortedAtomIndexes", HashCodeToSortedAtomIndexes);
 				ConfigComputeShader.SetInt("HashCodeToSortedAtomIndexes_Length", HashCodeToSortedAtomIndexes_Length);
@@ -510,9 +501,9 @@ public class Main : MonoBehaviour
 		var material = ShouldDrawAtomsShadows ? ConfigAtomsMaterialWithShadows : ConfigAtomsMaterial;
 
 		material.SetInt("AllAtoms_Length", AllAtoms_Length);
-		material.SetBuffer("AllAtoms_Position", AllAtoms_Position);
-		material.SetBuffer("AllAtoms_Velocity", AllAtoms_Velocity);
-		material.SetBuffer("AllAtoms_Rotation", AllAtoms_Rotation);
+		material.SetBuffer("AllAtoms", AllAtoms);
+		material.SetInt("AllHalfBonds_Length", AllHalfBonds_Length);
+		material.SetBuffer("AllHalfBonds", AllHalfBonds);
 		material.SetBuffer("HashCodeToSortedAtomIndexes", HashCodeToSortedAtomIndexes);
 		material.SetInt("HashCodeToSortedAtomIndexes_Length", HashCodeToSortedAtomIndexes_Length);
 		material.SetFloat("Scale", atomRadius * 2);
@@ -527,10 +518,10 @@ public class Main : MonoBehaviour
 
 	void ReadbackAtomPosition(uint atomIndex, System.Action<Vector3> resultCallback)
 	{
-		AsyncGPUReadback.Request(AllAtoms_Position, AllAtoms_Position.stride, AllAtoms_Position.stride * (int)atomIndex, (result) =>
-		{
-			var data = result.GetData<float>();
-			resultCallback?.Invoke(new Vector3(data[0], data[1], data[2]));
-		});
+		// AsyncGPUReadback.Request(AllAtoms_Position, AllAtoms_Position.stride, AllAtoms_Position.stride * (int)atomIndex, (result) =>
+		// {
+		// 	var data = result.GetData<float>();
+		// 	resultCallback?.Invoke(new Vector3(data[0], data[1], data[2]));
+		// });
 	}
 }

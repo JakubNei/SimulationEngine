@@ -2,10 +2,14 @@
 
 #include "MatrixQuaternion.cginc"
 
-int AllParticles_Length;
-StructuredBuffer<float4> AllParticles_Position;
-StructuredBuffer<float4> AllParticles_Velocity;
-StructuredBuffer<float4> AllParticles_Rotation;
+#include "AtomStruct.cginc"
+
+int AllHalfBonds_Length;
+StructuredBuffer<HalfBond> AllHalfBonds;
+
+int AllAtoms_Length;
+StructuredBuffer<Atom> AllAtoms;
+
 float Scale;
 
 struct ParticleStruct
@@ -19,17 +23,17 @@ ParticleStruct DrawParticle(float3 vertexPosModelSpace, float3 normalModelSpace,
 {
     ParticleStruct result;
 
-    float4 positionData = AllParticles_Position[instanceID];
-    float4 velocityData = AllParticles_Velocity[instanceID];
-    float4 rotation = AllParticles_Rotation[instanceID];
+    float3 position = AllAtoms[instanceID].position;
+    float3 velocity = AllAtoms[instanceID].velocity;
+    float4 rotation = AllAtoms[instanceID].rotation;
 
     float4x4 rotationMatrix = quaternion_to_matrix(rotation);
     result.normalWorldSpace = mul(rotationMatrix, normalModelSpace);
 
-    result.vertexPositionWorldSpace = mul(rotationMatrix, vertexPosModelSpace * Scale) + positionData.xyz;
+    result.vertexPositionWorldSpace = mul(rotationMatrix, vertexPosModelSpace * Scale) + position;
 
-    float debugValue = velocityData.w;
-    float speed = saturate(length(velocityData.xyz) / 3.0f);
+    float debugValue = 0;//velocityData.w;
+    float speed = saturate(length(velocity) / 3.0f);
     float neighbours = saturate(debugValue / 20.0f);
     result.color = float3(speed, (1.5 - neighbours) * (1.1 - speed), 0.1 + neighbours);
 

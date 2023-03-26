@@ -544,8 +544,7 @@ void Simulate_EvaluateForces(uint3 id : SV_DispatchThreadID)
     }
     
     // float deltaTime = 0.05f;
-
-    thisAtom.force.y -= 5 * DeltaTime;
+    //thisAtom.force.y -= 5 * DeltaTime;
 
     AllAtoms[thisAtomIndex] = thisAtom;
     // float damping = (1 - deltaTime * 0.2f);
@@ -562,7 +561,7 @@ void Simulate_EvaluateForces(uint3 id : SV_DispatchThreadID)
 void Simulate_Move(uint3 id : SV_DispatchThreadID)
 {
     uint atomIndex = id.x;
-    
+
     float damp = 0.95;
 
     // evaluate torques

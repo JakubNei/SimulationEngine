@@ -47,8 +47,8 @@ public class Main : MonoBehaviour
 	int HashCodeToSortedAtomIndexes_Length = 256 * 256 * 256;
 
 	// our scale space is in nanometers, atoms have an average radius of about 0.1 nm, so one Unity unit is one nanometer in this project
-	const float atomRadius = 0.1f;
-	const float interactionMaxRadius = atomRadius * 2;
+	const float atomRadius = 0.5f; // 0.1f;
+	const float interactionMaxRadius = 5; // atomRadius * 2;
 	float AtomInteractionMaxRadius = interactionMaxRadius;
 
 	public bool ShouldDrawAtoms = true;
@@ -162,15 +162,17 @@ public class Main : MonoBehaviour
 				{
 					var atom = new Atom();
 
-					var p = new Vector3(x * interactionMaxRadius, y * interactionMaxRadius, 0);
-					p += Random.onUnitSphere * interactionMaxRadius;
+					var p = new Vector3(x, y, 0) * interactionMaxRadius * 0.8f;
+					p += Random.onUnitSphere * interactionMaxRadius * 0.2f;
 					if (ShouldClampAtomsToXyPlane)
 						p.z = 0;
-					else
-						p.z *= 0.1f;
 					atom.position = p;
 					atom.velocity = Vector3.zero;
 					atom.rotation = Random.rotation;
+					atom.Epz = 0.5f;
+					atom.rbond0 = 0.5f;
+					atom.aMorse = 0.5f;
+					atom.bMorse = -0.7f;
 					atom.numUsedHalfBonds = 4;
 
 					for (int h = 0; h < 4; h++)

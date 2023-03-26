@@ -6,12 +6,23 @@ using UnityEngine.Rendering;
 
 public class Main : MonoBehaviour
 {
-	[SerializeField]
-	Material ConfigAtomsMaterial;
-	[SerializeField]
-	Material ConfigAtomsMaterialWithShadows;
+
 	[SerializeField]
 	Mesh ConfigAtomMesh;
+	[SerializeField]
+	Material ConfigAtomsMaterialSimple;
+	[SerializeField]
+	Material ConfigAtomsMaterialStandartLit;
+
+
+	[SerializeField]
+	Mesh ConfigHalfBondMesh;
+	[SerializeField]
+	Material ConfigHalfBondMaterialSimple;
+	[SerializeField]
+	Material ConfigHalfBondMaterialStandartLit;
+
+
 
 	[SerializeField]
 	ComputeShader ConfigComputeShader;
@@ -29,7 +40,10 @@ public class Main : MonoBehaviour
 	ComputeBuffer AllHalfBonds;
 
 	// index count per instance, instance count, start index location, base vertex location, start instance location
-	ComputeBuffer IndirectArguments_DrawMeshAtoms;
+	ComputeBuffer IndirectArguments_DrawAtoms;
+
+	ComputeBuffer IndirectArguments_DrawHalfBonds;
+	
 
 	// pairs of [index to in AllAtoms_Position, position hashcode], sorted by their position hashcode
 	ComputeBuffer SortedAtomIndexes;
@@ -47,12 +61,12 @@ public class Main : MonoBehaviour
 	int HashCodeToSortedAtomIndexes_Length = 256 * 256 * 256;
 
 	// our scale space is in nanometers, atoms have an average radius of about 0.1 nm, so one Unity unit is one nanometer in this project
-	const float atomRadius = 0.5f; // 0.1f;
+	const float atomRadius = 0.1f; // 0.1f;
 	const float interactionMaxRadius = 5; // atomRadius * 2;
 	float AtomInteractionMaxRadius = interactionMaxRadius;
 
 	public bool ShouldDrawAtoms = true;
-	public bool ShouldDrawAtomsShadows = true;
+	public bool ShouldDrawStandartLit = true;
 	public bool ShouldClampAtomsToXyPlane = true;
 	public bool ShouldRunBitonicSort = true;
 	public bool ShouldUseBitonicSortGroupSharedMemory = true;
@@ -180,6 +194,7 @@ public class Main : MonoBehaviour
 						allHalfBonds.Add(new HalfBond()
 						{
 							directionLocalSpace = sp3_hs[h],
+							cap = -1,
 						});
 					}
 
@@ -191,9 +206,12 @@ public class Main : MonoBehaviour
 			AllHalfBonds.SetData(allHalfBonds);
 		}
 
-		IndirectArguments_DrawMeshAtoms = new ComputeBuffer(5, sizeof(int), ComputeBufferType.IndirectArguments);
-		IndirectArguments_DrawMeshAtoms.SetData(new uint[] { ConfigAtomMesh.GetIndexCount(0), (uint)AllAtoms_Length, ConfigAtomMesh.GetIndexStart(0), ConfigAtomMesh.GetBaseVertex(0), 0 });
+		IndirectArguments_DrawAtoms = new ComputeBuffer(5, sizeof(int), ComputeBufferType.IndirectArguments);
+		IndirectArguments_DrawAtoms.SetData(new uint[] { ConfigAtomMesh.GetIndexCount(0), (uint)AllAtoms_Length, ConfigAtomMesh.GetIndexStart(0), ConfigAtomMesh.GetBaseVertex(0), 0 });
 
+		IndirectArguments_DrawHalfBonds = new ComputeBuffer(5, sizeof(int), ComputeBufferType.IndirectArguments);
+		IndirectArguments_DrawHalfBonds.SetData(new uint[] { ConfigHalfBondMesh.GetIndexCount(0), (uint)AllHalfBonds_Length, ConfigHalfBondMesh.GetIndexStart(0), ConfigHalfBondMesh.GetBaseVertex(0), 0 });
+		
 		emptyHitResult.Clear();
 		for (int i = 0; i < 4; i++)
 			emptyHitResult.Add(0);
@@ -209,8 +227,8 @@ public class Main : MonoBehaviour
 		AllAtoms = null;
 		AllHalfBonds?.Dispose();
 		AllHalfBonds = null;
-		IndirectArguments_DrawMeshAtoms?.Dispose();
-		IndirectArguments_DrawMeshAtoms = null;
+		IndirectArguments_DrawAtoms?.Dispose();
+		IndirectArguments_DrawAtoms = null;
 		SortedAtomIndexes?.Dispose();
 		SortedAtomIndexes = null;
 		HashCodeToSortedAtomIndexes?.Dispose();
@@ -244,7 +262,7 @@ public class Main : MonoBehaviour
 		}
 
 		ShouldDrawAtoms = GUILayout.Toggle(ShouldDrawAtoms, "draw atoms");
-		ShouldDrawAtomsShadows = GUILayout.Toggle(ShouldDrawAtomsShadows, "draw atoms shadows");
+		ShouldDrawStandartLit = GUILayout.Toggle(ShouldDrawStandartLit, "draw atoms shadows");
 		ShouldAllowPlayerAtomDrag = GUILayout.Toggle(ShouldAllowPlayerAtomDrag, "allow player to drag atom");
 		ShouldRunBitonicSort = GUILayout.Toggle(ShouldRunBitonicSort, "run bitonic sort");
 		ShouldUseBitonicSortGroupSharedMemory = GUILayout.Toggle(ShouldUseBitonicSortGroupSharedMemory, "use bitonic sort group shared memory");
@@ -498,24 +516,35 @@ public class Main : MonoBehaviour
 			DrawAtoms();
 	}
 
-	void DrawAtoms()
+	void SetDrawMaterialParams(Material material)
 	{
-		var material = ShouldDrawAtomsShadows ? ConfigAtomsMaterialWithShadows : ConfigAtomsMaterial;
-
 		material.SetInt("AllAtoms_Length", AllAtoms_Length);
 		material.SetBuffer("AllAtoms", AllAtoms);
 		material.SetInt("AllHalfBonds_Length", AllHalfBonds_Length);
 		material.SetBuffer("AllHalfBonds", AllHalfBonds);
 		material.SetBuffer("HashCodeToSortedAtomIndexes", HashCodeToSortedAtomIndexes);
 		material.SetInt("HashCodeToSortedAtomIndexes_Length", HashCodeToSortedAtomIndexes_Length);
-		material.SetFloat("Scale", atomRadius * 2);
+		material.SetFloat("AtomRadius", atomRadius);
 		material.SetFloat("AtomInteractionMaxRadius", AtomInteractionMaxRadius);
+	}
 
+	void DrawAtoms()
+	{
 		var bounds = new Bounds(Vector3.zero, Vector3.one * 1000);
-		if (ShouldDrawAtomsShadows)
-			Graphics.DrawMeshInstancedIndirect(ConfigAtomMesh, 0, material, bounds, IndirectArguments_DrawMeshAtoms, 0, null, ShadowCastingMode.On, true, 0, null, LightProbeUsage.BlendProbes);
+		if (ShouldDrawStandartLit)
+		{
+			SetDrawMaterialParams(ConfigAtomsMaterialStandartLit);
+			Graphics.DrawMeshInstancedIndirect(ConfigAtomMesh, 0, ConfigAtomsMaterialStandartLit, bounds, IndirectArguments_DrawAtoms, 0, null, ShadowCastingMode.On, true, 0, null, LightProbeUsage.BlendProbes);
+			SetDrawMaterialParams(ConfigHalfBondMaterialStandartLit);
+			Graphics.DrawMeshInstancedIndirect(ConfigHalfBondMesh, 0, ConfigHalfBondMaterialStandartLit, bounds, IndirectArguments_DrawHalfBonds, 0, null, ShadowCastingMode.On, true, 0, null, LightProbeUsage.BlendProbes);
+		}
 		else
-			Graphics.DrawMeshInstancedIndirect(ConfigAtomMesh, 0, material, bounds, IndirectArguments_DrawMeshAtoms, 0, null, ShadowCastingMode.Off, false, 0, null, LightProbeUsage.Off);
+		{
+			SetDrawMaterialParams(ConfigAtomsMaterialSimple);
+			Graphics.DrawMeshInstancedIndirect(ConfigAtomMesh, 0, ConfigAtomsMaterialSimple, bounds, IndirectArguments_DrawAtoms, 0, null, ShadowCastingMode.Off, false, 0, null, LightProbeUsage.Off);
+			SetDrawMaterialParams(ConfigHalfBondMaterialSimple);
+			Graphics.DrawMeshInstancedIndirect(ConfigHalfBondMesh, 0, ConfigHalfBondMaterialSimple, bounds, IndirectArguments_DrawHalfBonds, 0, null, ShadowCastingMode.Off, false, 0, null, LightProbeUsage.Off);
+		}
 	}
 
 	void ReadbackAtomPosition(uint atomIndex, System.Action<Vector3> resultCallback)

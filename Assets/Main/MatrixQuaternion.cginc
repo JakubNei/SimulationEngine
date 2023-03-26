@@ -86,19 +86,8 @@ float4 matrix_to_quaternion(float4x4 m)
     return q;
 }
 
-float4x4 m_scale(float4x4 m, float3 v)
-{
-    float x = v.x, y = v.y, z = v.z;
 
-    m[0][0] *= x; m[1][0] *= y; m[2][0] *= z;
-    m[0][1] *= x; m[1][1] *= y; m[2][1] *= z;
-    m[0][2] *= x; m[1][2] *= y; m[2][2] *= z;
-    m[0][3] *= x; m[1][3] *= y; m[2][3] *= z;
-
-    return m;
-}
-
-float4x4 quaternion_to_matrix(float4 quat)
+float4x4 quaternion_to_matrix_4x4(float4 quat)
 {
     float4x4 m = float4x4(float4(0, 0, 0, 0), float4(0, 0, 0, 0), float4(0, 0, 0, 0), float4(0, 0, 0, 0));
 
@@ -125,7 +114,7 @@ float4x4 quaternion_to_matrix(float4 quat)
     return m;
 }
 
-float3x3 quaternion_to_matrix_float3x3(float4 quat)
+float3x3 quaternion_to_matrix_3x3(float4 quat)
 {
     float3x3 m = 0;
 
@@ -150,6 +139,23 @@ float3x3 quaternion_to_matrix_float3x3(float4 quat)
     return m;
 }
 
+float3x3 rotation_matrix_3x3(float3 forward, float3 up)
+{
+    float3 zaxis = forward;
+    float3 xaxis = -normalize(cross(zaxis, up));
+    float3 yaxis = -cross(xaxis, zaxis);
+    return float3x3(
+		xaxis.x, yaxis.x, zaxis.x,
+		xaxis.y, yaxis.y, zaxis.y,
+		xaxis.z, yaxis.z, zaxis.z
+	);
+}
+
+float3x3 rotation_matrix_3x3(float3 forward)
+{
+    return rotation_matrix_3x3(forward, float3(0,1,0));
+}
+
 float4x4 m_translate(float4x4 m, float3 v)
 {
     float x = v.x, y = v.y, z = v.z;
@@ -159,9 +165,21 @@ float4x4 m_translate(float4x4 m, float3 v)
     return m;
 }
 
+float4x4 m_scale(float4x4 m, float3 v)
+{
+    float x = v.x, y = v.y, z = v.z;
+
+    m[0][0] *= x; m[1][0] *= y; m[2][0] *= z;
+    m[0][1] *= x; m[1][1] *= y; m[2][1] *= z;
+    m[0][2] *= x; m[1][2] *= y; m[2][2] *= z;
+    m[0][3] *= x; m[1][3] *= y; m[2][3] *= z;
+
+    return m;
+}
+
 float4x4 compose(float3 position, float4 quat, float3 scale)
 {
-    float4x4 m = quaternion_to_matrix(quat);
+    float4x4 m = quaternion_to_matrix_4x4(quat);
     m = m_scale(m, scale);
     m = m_translate(m, position);
     return m;
@@ -208,35 +226,6 @@ void decompose(in float4x4 m, out float3 position, out float4 rotation, out floa
     scale.z = sz;
 }
 
-float4x4 axis_matrix(float3 right, float3 up, float3 forward)
-{
-    float3 xaxis = right;
-    float3 yaxis = up;
-    float3 zaxis = forward;
-    return float4x4(
-		xaxis.x, yaxis.x, zaxis.x, 0,
-		xaxis.y, yaxis.y, zaxis.y, 0,
-		xaxis.z, yaxis.z, zaxis.z, 0,
-		0, 0, 0, 1
-	);
-}
-
-// http://stackoverflow.com/questions/349050/calculating-a-lookat-matrix
-float4x4 look_at_matrix(float3 forward, float3 up)
-{
-    float3 xaxis = normalize(cross(forward, up));
-    float3 yaxis = up;
-    float3 zaxis = forward;
-    return axis_matrix(xaxis, yaxis, zaxis);
-}
-
-float4x4 look_at_matrix(float3 at, float3 eye, float3 up)
-{
-    float3 zaxis = normalize(at - eye);
-    float3 xaxis = normalize(cross(up, zaxis));
-    float3 yaxis = cross(zaxis, xaxis);
-    return axis_matrix(xaxis, yaxis, zaxis);
-}
 
 float4x4 extract_rotation_matrix(float4x4 m)
 {

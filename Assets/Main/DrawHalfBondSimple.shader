@@ -1,4 +1,4 @@
-Shader "Unlit/DrawParticlesNoShadows"
+Shader "Unlit/DrawHalfBondSimple"
 {
 	Properties
 	{
@@ -20,12 +20,13 @@ Shader "Unlit/DrawParticlesNoShadows"
 			#pragma target 4.5
 
 			#include "UnityCG.cginc"
-			#include "DrawParticle.cginc"
+			#include "DrawAtom.cginc"
 
 			struct appdata
 			{
 				float4 vertex : POSITION;
-				float3 normal : NORMAL;
+				float3 normal : NORMAL;				
+				uint instanceID : SV_InstanceID;
 			};
 
 			struct v2f
@@ -34,12 +35,12 @@ Shader "Unlit/DrawParticlesNoShadows"
 				float3 color : TEXCOORD1;
 			};
 
-			v2f vert(appdata v, uint instanceID : SV_InstanceID)
+			v2f vert(appdata v)
 			{
-				ParticleStruct particle = DrawParticle(v.vertex.xyz, v.normal, instanceID);
+				DrawHalfBondResult a = DrawHalfBond(v.vertex.xyz, v.normal, v.instanceID);
 				v2f o;
-				o.pos = mul(UNITY_MATRIX_VP, float4(particle.vertexPositionWorldSpace, 1.0f));
-				o.color = particle.color * lerp(0.1, 1, 0.1 + max(0, dot(particle.normalWorldSpace, float3(0,1,0))));
+				o.pos = mul(UNITY_MATRIX_VP, float4(a.vertexPositionWorldSpace, 1.0f));
+				o.color = a.color * lerp(0.1, 1, 0.1 + max(0, dot(a.normalWorldSpace, float3(0,1,0))));
 				return o;
 			}
 

@@ -70,7 +70,7 @@ public class Main : MonoBehaviour
 	CursorHitResult? lastClosestCursorHitResult;
 
 	List<int> emptyHitResult = new(1024);
-	Queue<ComputeBuffer> hitResultPool = new();
+	Queue<ComputeBuffer> hitResultsPool = new();
 
 	List<float> emptyFetchAtomPosition = new(4);
 	Queue<ComputeBuffer> fetchAtomPositionPool = new();
@@ -216,9 +216,9 @@ public class Main : MonoBehaviour
 		HashCodeToSortedAtomIndexes?.Dispose();
 		HashCodeToSortedAtomIndexes = null;
 
-		foreach (var c in hitResultPool)
+		foreach (var c in hitResultsPool)
 			c.Dispose();
-		hitResultPool.Clear();
+		hitResultsPool.Clear();
 
 		foreach (var c in fetchAtomPositionPool)
 			c.Dispose();
@@ -342,9 +342,9 @@ public class Main : MonoBehaviour
 		// raycast find atom under mouse
 		if (ShouldAllowPlayerAtomDrag)
 		{
-			if (!hitResultPool.TryDequeue(out var hitResult))
-				hitResult = new ComputeBuffer(emptyHitResult.Count, Marshal.SizeOf(typeof(int)) * 4, ComputeBufferType.Structured);
-			hitResult.SetData(emptyHitResult);
+			if (!hitResultsPool.TryDequeue(out var hitResults))
+				hitResults = new ComputeBuffer(emptyHitResult.Count, Marshal.SizeOf(typeof(int)) * 4, ComputeBufferType.Structured);
+			hitResults.SetData(emptyHitResult);
 
 			var ray = Camera.main.ScreenPointToRay(Input.mousePosition);
 			var raycastHitAtoms = ConfigComputeShader.FindKernel("RaycastHitAtoms");
@@ -353,9 +353,10 @@ public class Main : MonoBehaviour
 			ConfigComputeShader.SetVector("RayDirection", ray.direction);
 			ConfigComputeShader.SetInt("AllAtoms_Length", AllAtoms_Length);
 			ConfigComputeShader.SetBuffer(raycastHitAtoms, "AllAtoms", AllAtoms);
+			ConfigComputeShader.SetBuffer(raycastHitAtoms, "HitResults", hitResults);
 			ConfigComputeShader.Dispatch(raycastHitAtoms, AllAtoms_Length / 512, 1, 1);
 
-			AsyncGPUReadback.Request(hitResult, (result) =>
+			AsyncGPUReadback.Request(hitResults, (result) =>
 			{
 				var data = result.GetData<int>();
 				lastCursorHitResults.Clear();
@@ -385,7 +386,7 @@ public class Main : MonoBehaviour
 					}
 				}
 
-				hitResultPool.Enqueue(hitResult);
+				hitResultsPool.Enqueue(hitResults);
 			});
 		}
 
@@ -462,7 +463,6 @@ public class Main : MonoBehaviour
 
 			{
 				var simulate = ConfigComputeShader.FindKernel("Simulate_EvaluateForces");
-				ConfigComputeShader.SetFloat("DeltaTime", 0.01f);
 				ConfigComputeShader.SetFloat("AtomRadius", atomRadius);
 				ConfigComputeShader.SetInt("AllAtoms_Length", AllAtoms_Length);
 				ConfigComputeShader.SetBuffer(simulate, "AllAtoms", AllAtoms);
@@ -480,7 +480,7 @@ public class Main : MonoBehaviour
 
 			{
 				var simulate = ConfigComputeShader.FindKernel("Simulate_Move");
-				ConfigComputeShader.SetFloat("DeltaTime", 0.01f);
+				ConfigComputeShader.SetFloat("DeltaTime", 0.05f);
 				ConfigComputeShader.SetInt("AllAtoms_Length", AllAtoms_Length);
 				ConfigComputeShader.SetBuffer(simulate, "AllAtoms", AllAtoms);
 				ConfigComputeShader.SetInt("AllHalfBonds_Length", AllHalfBonds_Length);
@@ -520,10 +520,10 @@ public class Main : MonoBehaviour
 
 	void ReadbackAtomPosition(uint atomIndex, System.Action<Vector3> resultCallback)
 	{
-		// AsyncGPUReadback.Request(AllAtoms_Position, AllAtoms_Position.stride, AllAtoms_Position.stride * (int)atomIndex, (result) =>
-		// {
-		// 	var data = result.GetData<float>();
-		// 	resultCallback?.Invoke(new Vector3(data[0], data[1], data[2]));
-		// });
+		AsyncGPUReadback.Request(AllAtoms, AllAtoms.stride, AllAtoms.stride * (int)atomIndex, (result) =>
+		{
+			var data = result.GetData<Atom>();
+			resultCallback?.Invoke(data[0].position);
+		});
 	}
 }

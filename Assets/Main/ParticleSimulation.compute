@@ -307,7 +307,6 @@ void Simulate_Prepare(uint3 id : SV_DispatchThreadID)
 }
 
 
-float DeltaTime;
 int DragAtomIndex;
 float3 DragTargetWorldPosition;
 
@@ -529,8 +528,7 @@ void Simulate_EvaluateForces(uint3 id : SV_DispatchThreadID)
         float3 direction = DragTargetWorldPosition - thisAtomPosition;
         float len = length(direction);
         thisAtom.force += direction / len * clamp(0, 10, len * 10);             
-    }   
-    
+    }    
  
     for (int index = 0; index < BoundingPlanes_Length; index++)
     {
@@ -543,26 +541,18 @@ void Simulate_EvaluateForces(uint3 id : SV_DispatchThreadID)
         }
     }
     
-    // float deltaTime = 0.05f;
-    //thisAtom.force.y -= 5 * DeltaTime;
-
     AllAtoms[thisAtomIndex] = thisAtom;
-    // float damping = (1 - deltaTime * 0.2f);
-    // thisAtomVelocity *= damping;
-
-    // if (ClampTo2D)
-    //     thisAtomVelocity.z = 0;
-
-    // AllAtoms_Velocity[thisAtomIndex] = float4(thisAtomVelocity, countOfInteractingAtoms);
 }
 
+
+float DeltaTime;
 #pragma kernel Simulate_Move
 [numthreads(512, 1, 1)]
 void Simulate_Move(uint3 id : SV_DispatchThreadID)
 {
     uint atomIndex = id.x;
 
-    float damp = 0.95;
+    float damp = 0.9;
 
     // evaluate torques
     for (int halfBondIndex; halfBondIndex < HALF_BOND_MAX_COUNT; halfBondIndex++)
@@ -575,17 +565,12 @@ void Simulate_Move(uint3 id : SV_DispatchThreadID)
 
     const float invRotMass = 2.0;
 
-    AllAtoms[atomIndex].velocity = damp * AllAtoms[atomIndex].velocity + DeltaTime * AllAtoms[atomIndex].force;
+    int3 clampTo2d = 1;
+    if (ClampTo2D)
+        clampTo2d = int3(1, 1, 0);
+
+    AllAtoms[atomIndex].velocity = damp * AllAtoms[atomIndex].velocity * clampTo2d + DeltaTime * AllAtoms[atomIndex].force * clampTo2d;
     AllAtoms[atomIndex].omega = damp * AllAtoms[atomIndex].omega + (DeltaTime * invRotMass) * AllAtoms[atomIndex].torque;
-    AllAtoms[atomIndex].position += AllAtoms[atomIndex].velocity * DeltaTime;
+    AllAtoms[atomIndex].position += AllAtoms[atomIndex].velocity * clampTo2d * DeltaTime;
     AllAtoms[atomIndex].rotation = normalize(d_rot_exact(AllAtoms[atomIndex].rotation, DeltaTime, AllAtoms[atomIndex].omega));
-
-    // uint thisAtomIndex = id.x;
-    // float3 thisAtomPosition = AllAtoms_Position[thisAtomIndex].xyz;
-
-    // if (ClampTo2D)
-    //     thisAtomPosition.z = 0;
-    
-    // AllAtoms[thisAtomIndex].velocity += AllAtoms[thisAtomIndex].force * DeltaTime;
-    // AllAtoms[thisAtomIndex].position += thisAtomPosition + AllAtoms[thisAtomIndex].velocity * DeltaTime;
 }

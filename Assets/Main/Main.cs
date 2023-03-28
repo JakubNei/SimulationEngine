@@ -151,10 +151,10 @@ public class Main : MonoBehaviour
 		// ERROR: Thread group count is above the maximum allowed limit. Maximum allowed thread group count is 65535
 
 		// force 64 for num threads
-		AllAtoms_Length = Mathf.Max(1, Mathf.CeilToInt(AllAtoms_Length / 512)) * 512;
+		AllAtoms_Length = Mathf.Max(1, Mathf.CeilToInt(AllAtoms_Length / 128)) * 512;
 		AllHalfBonds_Length = AllAtoms_Length * 4;
 
-		HashCodeToSortedAtomIndexes_Length = Mathf.Max(512, Mathf.CeilToInt(HashCodeToSortedAtomIndexes_Length / 512)) * 512;
+		HashCodeToSortedAtomIndexes_Length = Mathf.Max(512, Mathf.CeilToInt(HashCodeToSortedAtomIndexes_Length / 128)) * 512;
 
 		HashCodeToSortedAtomIndexes = new ComputeBuffer(HashCodeToSortedAtomIndexes_Length * 2, Marshal.SizeOf(typeof(uint)), ComputeBufferType.Structured);
 
@@ -307,7 +307,7 @@ public class Main : MonoBehaviour
 				ConfigComputeShader.SetInt("AllAtoms_Length", AllAtoms_Length);
 				ConfigComputeShader.SetBuffer(bitonicSort, "AllAtoms", AllAtoms);
 				ConfigComputeShader.SetBuffer(bitonicSort, "SortedAtomIndexes", SortedAtomIndexes);
-				ConfigComputeShader.Dispatch(bitonicSort, AllAtoms_Length / 512, 1, 1);
+				ConfigComputeShader.Dispatch(bitonicSort, AllAtoms_Length / 128, 1, 1);
 			}
 
 			{
@@ -321,7 +321,7 @@ public class Main : MonoBehaviour
 							ConfigComputeShader.SetBuffer(bitonicSort, "SortedAtomIndexes", SortedAtomIndexes);
 							ConfigComputeShader.SetInt("DirectionChangeStride", DirectionChangeStride);
 							ConfigComputeShader.SetInt("ComparisonOffset", ComparisonOffset);
-							ConfigComputeShader.Dispatch(bitonicSort, AllAtoms_Length / 512, 1, 1);
+							ConfigComputeShader.Dispatch(bitonicSort, AllAtoms_Length / 128, 1, 1);
 							break;
 						}
 						else
@@ -330,7 +330,7 @@ public class Main : MonoBehaviour
 							ConfigComputeShader.SetBuffer(bitonicSort, "SortedAtomIndexes", SortedAtomIndexes);
 							ConfigComputeShader.SetInt("DirectionChangeStride", DirectionChangeStride);
 							ConfigComputeShader.SetInt("ComparisonOffset", ComparisonOffset);
-							ConfigComputeShader.Dispatch(bitonicSort, AllAtoms_Length / 512, 1, 1);
+							ConfigComputeShader.Dispatch(bitonicSort, AllAtoms_Length / 128, 1, 1);
 							if (ComparisonOffset == 1) break;
 						}
 					}
@@ -341,7 +341,7 @@ public class Main : MonoBehaviour
 				{
 					var hashCodeToSortedAtomIndexes_Initialize = ConfigComputeShader.FindKernel("HashCodeToSortedAtomIndexes_Initialize");
 					ConfigComputeShader.SetBuffer(hashCodeToSortedAtomIndexes_Initialize, "HashCodeToSortedAtomIndexes", HashCodeToSortedAtomIndexes);
-					ConfigComputeShader.Dispatch(hashCodeToSortedAtomIndexes_Initialize, HashCodeToSortedAtomIndexes_Length / 512, 1, 1);
+					ConfigComputeShader.Dispatch(hashCodeToSortedAtomIndexes_Initialize, HashCodeToSortedAtomIndexes_Length / 128, 1, 1);
 				}
 
 				{
@@ -352,7 +352,7 @@ public class Main : MonoBehaviour
 					ConfigComputeShader.SetBuffer(hashCodeToSortedAtomIndexes_Bin, "HashCodeToSortedAtomIndexes", HashCodeToSortedAtomIndexes);
 					ConfigComputeShader.SetInt("HashCodeToSortedAtomIndexes_Length", HashCodeToSortedAtomIndexes_Length);
 					ConfigComputeShader.SetBuffer(hashCodeToSortedAtomIndexes_Bin, "SortedAtomIndexes", SortedAtomIndexes);
-					ConfigComputeShader.Dispatch(hashCodeToSortedAtomIndexes_Bin, AllAtoms_Length / 512, 1, 1);
+					ConfigComputeShader.Dispatch(hashCodeToSortedAtomIndexes_Bin, AllAtoms_Length / 128, 1, 1);
 				}
 			}
 		}
@@ -372,7 +372,7 @@ public class Main : MonoBehaviour
 			ConfigComputeShader.SetInt("AllAtoms_Length", AllAtoms_Length);
 			ConfigComputeShader.SetBuffer(raycastHitAtoms, "AllAtoms", AllAtoms);
 			ConfigComputeShader.SetBuffer(raycastHitAtoms, "HitResults", hitResults);
-			ConfigComputeShader.Dispatch(raycastHitAtoms, AllAtoms_Length / 512, 1, 1);
+			ConfigComputeShader.Dispatch(raycastHitAtoms, AllAtoms_Length / 128, 1, 1);
 
 			AsyncGPUReadback.Request(hitResults, (result) =>
 			{
@@ -476,7 +476,7 @@ public class Main : MonoBehaviour
 				ConfigComputeShader.SetInt("HashCodeToSortedAtomIndexes_Length", HashCodeToSortedAtomIndexes_Length);
 				ConfigComputeShader.SetBuffer(simulate, "SortedAtomIndexes", SortedAtomIndexes);
 				ConfigComputeShader.SetBool("ClampTo2D", ShouldClampAtomsToXyPlane);
-				ConfigComputeShader.Dispatch(simulate, AllAtoms_Length / 512, 1, 1);
+				ConfigComputeShader.Dispatch(simulate, AllAtoms_Length / 128, 1, 1);
 			}
 
 			{
@@ -493,7 +493,7 @@ public class Main : MonoBehaviour
 				ConfigComputeShader.SetInt("HashCodeToSortedAtomIndexes_Length", HashCodeToSortedAtomIndexes_Length);
 				ConfigComputeShader.SetBuffer(simulate, "SortedAtomIndexes", SortedAtomIndexes);
 				ConfigComputeShader.SetBool("ClampTo2D", ShouldClampAtomsToXyPlane);
-				ConfigComputeShader.Dispatch(simulate, AllAtoms_Length / 512, 1, 1);
+				ConfigComputeShader.Dispatch(simulate, AllAtoms_Length / 128, 1, 1);
 			}
 
 			{
@@ -508,7 +508,7 @@ public class Main : MonoBehaviour
 				ConfigComputeShader.SetInt("HashCodeToSortedAtomIndexes_Length", HashCodeToSortedAtomIndexes_Length);
 				ConfigComputeShader.SetBuffer(simulate, "SortedAtomIndexes", SortedAtomIndexes);
 				ConfigComputeShader.SetBool("ClampTo2D", ShouldClampAtomsToXyPlane);
-				ConfigComputeShader.Dispatch(simulate, AllAtoms_Length / 512, 1, 1);
+				ConfigComputeShader.Dispatch(simulate, AllAtoms_Length / 128, 1, 1);
 			}
 		}
 

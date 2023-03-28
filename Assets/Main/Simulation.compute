@@ -10,9 +10,11 @@
 
 int AllHalfBonds_Length;
 RWStructuredBuffer<HalfBond> AllHalfBonds;
+StructuredBuffer<HalfBond> AllHalfBonds_Read;
 
 int AllAtoms_Length;
 RWStructuredBuffer<Atom> AllAtoms;
+StructuredBuffer<Atom> AllAtoms_Read;
 
 
 
@@ -201,6 +203,20 @@ void BitonicSort_Sort_GroupShared(uint3 Gid  : SV_GroupID,
 	SortedAtomIndexes[DTid.x] = GroupSharedData[GI];
 }
 
+#pragma kernel BitonicSort_ReorderData
+[numthreads(128, 1, 1)]
+void BitonicSort_ReorderData(uint3 dispatchThreadID : SV_DispatchThreadID)
+{
+    uint newIndex = dispatchThreadID.x;
+    uint oldIndex = SortedAtomIndexes[newIndex].x;
+
+    AllAtoms[newIndex] = AllAtoms_Read[oldIndex];
+    for (int halfBondIndex; halfBondIndex < HALF_BOND_MAX_COUNT; halfBondIndex++)
+    {
+        AllHalfBonds[newIndex * HALF_BOND_MAX_COUNT + halfBondIndex] = AllHalfBonds_Read[oldIndex * HALF_BOND_MAX_COUNT + halfBondIndex];        
+    }
+}
+
 
 
 #pragma kernel HashCodeToSortedAtomIndexes_Initialize
@@ -310,6 +326,7 @@ void Simulate_Prepare(uint3 id : SV_DispatchThreadID)
 
 int DragAtomIndex;
 float3 DragTargetWorldPosition;
+bool DataAlreadyOrdered;
 
 groupshared float3 thisAtomForce_Change[32];
 groupshared float3 thisAtomHalfBond_Force_Change[32 * HALF_BOND_MAX_COUNT];
@@ -362,7 +379,12 @@ void Simulate_EvaluateForces(
             sortedAtomsIndex <= sortedAtomsEndIndex; 
             sortedAtomsIndex++)
         {
-            uint otherAtomIndex = SortedAtomIndexes[sortedAtomsIndex].x;
+            uint otherAtomIndex;
+            if (DataAlreadyOrdered)
+                otherAtomIndex = sortedAtomsIndex;
+            else
+                otherAtomIndex = SortedAtomIndexes[sortedAtomsIndex].x;
+
             if (otherAtomIndex != thisAtomIndex)
             {
                 Atom otherAtom = AllAtoms[otherAtomIndex];
@@ -546,22 +568,25 @@ void Simulate_EvaluateForces(
 
     if (groupThreadID.x != 0) return;
     
-    for (int i = 0; i < 27; i++)
+    // sum reduce shared data
     {
-        thisAtom.force += thisAtomForce_Change[i];
-    }
-
-    for (int halfBondIndex; halfBondIndex < HALF_BOND_MAX_COUNT; halfBondIndex++)
-    {
-        float3 force = 0;
-        float3 energy = 0;
         for (int i = 0; i < 27; i++)
         {
-            force += thisAtomHalfBond_Force_Change[i * HALF_BOND_MAX_COUNT + halfBondIndex];
-            energy += thisAtomHalfBond_Energy_Change[i * HALF_BOND_MAX_COUNT + halfBondIndex];
+            thisAtom.force += thisAtomForce_Change[i];
         }
-        AllHalfBonds[thisAtomIndex * HALF_BOND_MAX_COUNT + halfBondIndex].force += force;
-        AllHalfBonds[thisAtomIndex * HALF_BOND_MAX_COUNT + halfBondIndex].energy += energy;
+
+        for (int halfBondIndex; halfBondIndex < HALF_BOND_MAX_COUNT; halfBondIndex++)
+        {
+            float3 force = 0;
+            float3 energy = 0;
+            for (int i = 0; i < 27; i++)
+            {
+                force += thisAtomHalfBond_Force_Change[i * HALF_BOND_MAX_COUNT + halfBondIndex];
+                energy += thisAtomHalfBond_Energy_Change[i * HALF_BOND_MAX_COUNT + halfBondIndex];
+            }
+            AllHalfBonds[thisAtomIndex * HALF_BOND_MAX_COUNT + halfBondIndex].force += force;
+            AllHalfBonds[thisAtomIndex * HALF_BOND_MAX_COUNT + halfBondIndex].energy += energy;
+        }
     }
 
     if (thisAtomIndex == DragAtomIndex)

@@ -1,5 +1,5 @@
 
-![](.images/Screenshot 2023-03-28.png)
+![](.images/Screenshot-2023-03-28.png)
 ![](.images/Screenshot-2023-02-18.png)
 
 
@@ -68,18 +68,17 @@ Can optimize using [Fast multipole method](https://en.wikipedia.org/wiki/Fast_mu
 - Noticable
     - In Bitonic Sort Using additional kernel that uses shared memory when we compare keys with small offset [Bitonic sort example Unity compute shader]
 
+## What didnt help
+- Ordering actual data (not just indexes) according to hashcode didn't help. There was no performance improvemenet in interaction forces evaluation kernel. Only additional cost of the reordering kernel.
+  
 ## To try
-### Use sorting that improves preformance with almost sorted array
-Atoms are likely to stay in same cell over time.
-
-### Auto tuning
-- Find best block size
+- Use sorting algorithm that improves preformance with almost sorted array. Atoms are likely to stay in same cell over time.
+- Auto tuning
+  - Find best block size
 https://forums.developer.nvidia.com/t/how-to-choose-how-many-threads-blocks-to-have/55529/6
-- Find best hashcode implementation
-- Find best hash code to arom index array size (probably bigger is better to reduce hashcode collisions) 
-
-### Other
-[Consider using OpenCL in Unity][Using OpenCL in Unity]
+  - Find best hashcode implementation
+  - Find best hash code to arom index array size (probably bigger is better to reduce hashcode collisions) 
+- [Consider using OpenCL in Unity][Using OpenCL in Unity]
 
 
 # Resources

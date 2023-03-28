@@ -587,8 +587,8 @@ void Simulate_Move(uint3 id : SV_DispatchThreadID)
     if (ClampTo2D)
         clampTo2d = int3(1, 1, 0);
 
-    AllAtoms[atomIndex].velocity = damp * AllAtoms[atomIndex].velocity * clampTo2d + DeltaTime * AllAtoms[atomIndex].force * clampTo2d;
+    AllAtoms[atomIndex].velocity = (damp * AllAtoms[atomIndex].velocity * clampTo2d + DeltaTime * AllAtoms[atomIndex].force) * clampTo2d;
     AllAtoms[atomIndex].omega = damp * AllAtoms[atomIndex].omega + (DeltaTime * invRotMass) * AllAtoms[atomIndex].torque;
-    AllAtoms[atomIndex].position += AllAtoms[atomIndex].velocity * clampTo2d * DeltaTime;
+    AllAtoms[atomIndex].position = (AllAtoms[atomIndex].position + AllAtoms[atomIndex].velocity * DeltaTime) * clampTo2d;
     AllAtoms[atomIndex].rotation = normalize(d_rot_exact(AllAtoms[atomIndex].rotation, DeltaTime, AllAtoms[atomIndex].omega));
 }

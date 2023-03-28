@@ -176,7 +176,7 @@ public class Main : MonoBehaviour
 				{
 					var atom = new Atom();
 
-					var p = new Vector3(x, y, 0) * interactionMaxRadius * 0.8f;
+					var p = new Vector3(x, y, 0) * interactionMaxRadius * 0.3f;
 					p += Random.onUnitSphere * interactionMaxRadius * 0.2f;
 					if (ShouldClampAtomsToXyPlane)
 						p.z = 0;

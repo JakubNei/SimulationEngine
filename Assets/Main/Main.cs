@@ -31,7 +31,8 @@ public class Main : MonoBehaviour
 	GameObject ConfigBoundingPlanes;
 
 	//int AllAtoms_Length = 128 * 128 * 64; // 1 million
-	int AllAtoms_Length = 1024 * 64; // 65k
+	//int AllAtoms_Length = 1024 * 64; // 65k
+	int AllAtoms_Length = 1024 * 64 * 2; // 131k
 	//int AllAtoms_Length = 2 * 64 * 64;
 
 	ComputeBuffer AllAtoms;
@@ -565,3 +566,4 @@ public class Main : MonoBehaviour
 		});
 	}
 }
+

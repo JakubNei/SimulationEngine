@@ -545,12 +545,12 @@ void Simulate_EvaluateForces(
     GroupMemoryBarrierWithGroupSync();
 
     if (groupThreadID.x != 0) return;
-
     
     for (int i = 0; i < 27; i++)
     {
         thisAtom.force += thisAtomForce_Change[i];
     }
+
     for (int halfBondIndex; halfBondIndex < HALF_BOND_MAX_COUNT; halfBondIndex++)
     {
         float3 force = 0;
@@ -563,7 +563,6 @@ void Simulate_EvaluateForces(
         AllHalfBonds[thisAtomIndex * HALF_BOND_MAX_COUNT + halfBondIndex].force += force;
         AllHalfBonds[thisAtomIndex * HALF_BOND_MAX_COUNT + halfBondIndex].energy += energy;
     }
-
 
     if (thisAtomIndex == DragAtomIndex)
     {
@@ -579,7 +578,6 @@ void Simulate_EvaluateForces(
         if (distanceToPlane < 0)
         {
             thisAtom.force += plane.xyz * clamp(abs(distanceToPlane), 0, 1) * 100;
-            //thisAtomVelocity = reflect(thisAtomVelocity.xyz, plane.xyz) * 0.8f;
         }
     }
 

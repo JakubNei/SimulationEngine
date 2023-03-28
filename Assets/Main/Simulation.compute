@@ -170,7 +170,7 @@ void BitonicSort_Sort(uint3 id : SV_DispatchThreadID)
 
 // Optimization: instead of dispatching multiple kernels with small comparionOffsets
 // we can use many comparionOffsets in one kernel if the comparionOffsets is small enough and all relevant data can fit into shared memory
-#define BITONIC_BLOCK_SIZE 512
+#define BITONIC_BLOCK_SIZE 128
 groupshared uint2 GroupSharedData[BITONIC_BLOCK_SIZE];
 #pragma kernel BitonicSort_Sort_GroupShared
 [numthreads(BITONIC_BLOCK_SIZE, 1, 1)]

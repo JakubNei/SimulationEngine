@@ -58,7 +58,7 @@ public class Main : MonoBehaviour
 	ComputeBuffer BoundingPlanes_NormalDistance;
 
 	// maximum amount of voxel cells
-	int HashCodeToSortedAtomIndexes_Length = 256 * 256 * 256;
+	int HashCodeToSortedAtomIndexes_Length = 128 * 128 * 4;
 
 	// our scale space is in nanometers, atoms have an average radius of about 0.1 nm, so one Unity unit is one nanometer in this project
 	const float atomRadius = 0.1f; // 0.1f;
@@ -151,10 +151,10 @@ public class Main : MonoBehaviour
 		// ERROR: Thread group count is above the maximum allowed limit. Maximum allowed thread group count is 65535
 
 		// force 64 for num threads
-		AllAtoms_Length = Mathf.Max(1, Mathf.CeilToInt(AllAtoms_Length / 128)) * 512;
+		AllAtoms_Length = Mathf.Max(1, Mathf.CeilToInt(AllAtoms_Length / 128)) * 128;
 		AllHalfBonds_Length = AllAtoms_Length * 4;
 
-		HashCodeToSortedAtomIndexes_Length = Mathf.Max(512, Mathf.CeilToInt(HashCodeToSortedAtomIndexes_Length / 128)) * 512;
+		HashCodeToSortedAtomIndexes_Length = Mathf.Max(1, Mathf.CeilToInt(HashCodeToSortedAtomIndexes_Length / 128)) * 128;
 
 		HashCodeToSortedAtomIndexes = new ComputeBuffer(HashCodeToSortedAtomIndexes_Length * 2, Marshal.SizeOf(typeof(uint)), ComputeBufferType.Structured);
 
@@ -315,7 +315,7 @@ public class Main : MonoBehaviour
 				{
 					for (int ComparisonOffset = DirectionChangeStride / 2; true; ComparisonOffset /= 2)
 					{
-						if (ShouldUseBitonicSortGroupSharedMemory && ComparisonOffset <= 256)
+						if (ShouldUseBitonicSortGroupSharedMemory && ComparisonOffset < 128)
 						{
 							var bitonicSort = ConfigComputeShader.FindKernel("BitonicSort_Sort_GroupShared");
 							ConfigComputeShader.SetBuffer(bitonicSort, "SortedAtomIndexes", SortedAtomIndexes);

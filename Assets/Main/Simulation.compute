@@ -308,217 +308,56 @@ void Simulate_Prepare(uint3 id : SV_DispatchThreadID)
 }
 
 
-
-void EvaluateForces(int thisAtomIndex, int otherAtomIndex, bool saveToThis)
-{
-    Atom thisAtom = AllAtoms[thisAtomIndex];
-    Atom otherAtom = AllAtoms[otherAtomIndex];
-
-
-    // This is modified from RARFFarr
-    const float RcutMax = 5.0; // [A]
-    const float R2cut = RcutMax*RcutMax;
-    const float RcutCap = 3.0; // [A]
-    const float R2cutCap = RcutCap*RcutCap;
-    const bool bRepelCaps = true;
-    const bool bDonorAcceptorCap = false;
-    const float lcap       =   1.0;
-    const float aMorseCap  =   1.0;
-    const float bMorseCap  =  -0.7;
-    #define R2SAFE  1.0e-8f
-
-    // subtract atom positions, check if within cutoff
-    float3 dij = otherAtom.position - thisAtom.position;
-    float r2 = dot(dij, dij);
-    if (r2 > R2cut) return; // cutoff
-    float rij = sqrt(r2);
-    float3 hij = dij*(1/rij);
-    
-    // mixing rules for L-J interaction  https://en.wikipedia.org/wiki/Combining_rules
-    float combined_aMorse = thisAtom.aMorse * otherAtom.aMorse;
-    float combined_bMorse = thisAtom.bMorse + otherAtom.bMorse;
-    float combined_rbond0 = thisAtom.rbond0 + otherAtom.rbond0;
-    float combined_Epz = thisAtom.Epz;
-    
-    // Evaluate **radial** Potential and Force
-    // https://en.wikipedia.org/wiki/Morse_potential
-    // potential composed frowm two exponetials
-    // one is atractive decaying slowly, represeting electron which want to share two atoms (forming a bond)
-    // the other is repulsive, decaying fast, representing electron which want to avoid having overlap which other electrons which already are near the atomic nuclei 
-    // E  = a*( exp( -b*(r-r0) ) - 1 )^2
-    //float expr = exp( -type.bMorse*(rij - type.rbond0); // original version
-    float2 r  = finite_exp( rij - combined_rbond0, -combined_bMorse, RcutMax-combined_rbond0 );
-    float expr = r.x;
-    float dexpr = r.y;
-    float E     =    combined_aMorse*expr* expr; // repuslive part of interaction
-    float fr    =  2*combined_aMorse*expr*dexpr; // repulsive force
-    float Eb    = -2*combined_aMorse*      expr; // bonding energy (attractive part of interactions)
-    float frb   = -2*combined_aMorse*     dexpr; // bonding force
-    float3 force = hij*fr;
-
-    // =================== Evaluate angular part of potential (and force)
-
-    // matrix derivative cosine(hi,hj) = 1/|hi||hj| d/dhi (hi.hj
-    // in short - you give it direction, it gives you force
-    // Evaluate angular derivative matrix
-    float2x3 Dij = from_deriv(dij, 1/(rij*r2));
-
-    // Interactions between all pairs of bonds on that atom 
-    // all half-bonds on atom A
-    for (
-        int thisAtomHalfBondIndex = thisAtomIndex * HALF_BOND_MAX_COUNT; 
-        thisAtomHalfBondIndex < thisAtomIndex * HALF_BOND_MAX_COUNT + thisAtom.numUsedHalfBonds; 
-        thisAtomHalfBondIndex++
-    ) 
-    {
-        const float3 hi = AllHalfBonds[thisAtomHalfBondIndex].directionWorldSpace;
-        float ci       = dot(hij, hi);   // ci = <hi|hij>
-
-        // we have 3 cosines of 3 anges
-        // ci  = cos(hi,hij)
-        // cj  = cos(hj,hij)
-        // cij = cos(hi,hj)
-        // where:
-        // hi ... direction of bond on atom i
-        // hj ... direction of bond on atom j
-        // hij ... direction of bond between atoms i and j (between centers of atoms)
-
-        if (ci < 0)       // cannot bond if in oposite direction (other half plane)
-            continue; 
-
-        bool capi = AllHalfBonds[thisAtomHalfBondIndex].cap >= 0; // if bond is capped it does not bond any more
-
-        // all half-bonds on atom B
-        for (
-            int otherAtomHalfBondIndex = otherAtomIndex * HALF_BOND_MAX_COUNT;
-            otherAtomHalfBondIndex < otherAtomIndex * HALF_BOND_MAX_COUNT + otherAtom.numUsedHalfBonds;
-            otherAtomHalfBondIndex++
-        )
-        {
-            const float3 hj = AllHalfBonds[otherAtomHalfBondIndex].directionWorldSpace;
-            // Interaction between capped (i.e. passivated) bonds - Only repulsive
-            // if( bDonorAcceptorCap && capi && AllHalfBonds[otherAtomHalfBondIndex].cap>=0) continue;
-            // // ---- repulsion of capping atoms on both bonds (i,j)
-            // if( bRepelCaps && capi && AllHalfBonds[otherAtomHalfBondIndex].cap>=0)
-            // {
-            //     float3 pi = thisAtom.position + hi*lcap;
-            //     float3 pj = otherAtom.position + hj*lcap;
-            //     float3  dij   = pi-pj;
-            //     float r2    = dot(dij, dij) + R2SAFE;
-            //     if( r2<R2cutCap ){ 
-            //         // Morse
-            //         float rij   = sqrt( r2 );
-            //         //float e     = aMorseCap * exp( bMorseCap*rij );
-            //         //float3  f     = dij * (-bMorseCap * e / rij);
-            //         //  ----- only the repulsive part of the Morse potential
-            //         float2 r     = aMorseCap * finite_exp( rij, -bMorseCap, RcutCap );   
-            //         float e = r.x;
-            //         float frc = r.y;
-            //         float3  f     = dij * (aMorseCap * frc / rij );     
-            //         E+=e;
-            //         force += f;
-            //         f *= 1.0/lcap;
-            //         if (saveToThis)
-            //             AllHalfBonds[thisAtomHalfBondIndex].force += f;
-            //         else
-            //             AllHalfBonds[otherAtomHalfBondIndex].force -= f;
-            //         continue;
-            //     }
-            // }
-
-            // ---- Here starts the actual angular enery evaluation for pair of half-bonds
-            // cosines of angles between the bonds
-            float cj       = dot(hij, hj);  // cj  = <hj|hij>
-            float cij      = dot(hi, hj);  // cij = <hj|hi>
-            if(cj>0||cij>0) continue;   // check if bonds oriented toward each other
-
-            // Angular potential     E =  (cos(ai)*cos(aj)*cos(aij)) ^ 4
-            float cc  = ci*cj*cij;
-            float cc2 = cc*cc;
-            float e   = cc2*cc2;   // Angular Energy 
-            float de  = 4*cc2*cc;  // Angular derivative
-
-            // Total energy of bond is product of radial and angular part
-            // this can be imaggined that atoms have to be ind proper distance (i.e. radial part)
-            // but also that the half-bonds have to be properly oriented (depends of cosises ci,cj,cij)
-            float eEb = e * Eb; // mutiply by radial bond energy
-            AllHalfBonds[thisAtomHalfBondIndex].energy += eEb*0.5;
-            //AllHalfBonds[otherAtomHalfBondIndex].energy += eEb*0.5;
-            E      += eEb;
-
-            // Now we have to compute forces by derivative of total energy (eEb=e*Eb) 
-            // with respect to all input variables (degrees-of-freedom) using chain derivative rule
-            float deEb = de*Eb;
-            float cicj = ci*cj;
-            float cijcideEb = cij*ci*deEb; // temp variables for chain derivative rule to compute force from energy experssion
-            float cijcjdeEb = cij*cj*deEb;
-            float frbe = frb*e;
-            AllHalfBonds[thisAtomHalfBondIndex].force += hij * (-cijcjdeEb); 
-            AllHalfBonds[thisAtomHalfBondIndex].force += hj * (-cicj*deEb);        
-            //AllHalfBonds[otherAtomHalfBondIndex].force += hij * (-cijcideEb); 
-            //AllHalfBonds[otherAtomHalfBondIndex].force += hi * (-cicj*deEb);
-
-            float3 hv;
-            hv = dot_to(Dij, hi); 
-            force += hv * (cijcjdeEb);
-            hv = dot_to(Dij, hj); 
-            force += hv * (cijcideEb);
-
-            force += hij * (frb*e);
-        }
-    }
-
-    // pi-pi interactions ( trying to align pi-orbitals in aromatic molecules, planarize them )
-    // for examplpe benzene molecule-molecule orbital
-    if (thisAtom.numUsedHalfBonds == 3 && otherAtom.numUsedHalfBonds == 3)
-    {
-        // align pz-pz in sp2-sp2 pair
-        const float3 hi = AllHalfBonds[thisAtomIndex * HALF_BOND_MAX_COUNT + 3].directionWorldSpace;
-        const float3 hj = AllHalfBonds[otherAtomIndex * HALF_BOND_MAX_COUNT + 3].directionWorldSpace;
-        float cdot = dot(hi, hj); // we try to make these to pi-orbitals collinear
-        //float E = Epz * ( cdot*cdot ); // why I do no save energy ?
-        float de = -2*cdot*combined_Epz*Eb;
-        AllHalfBonds[thisAtomIndex * HALF_BOND_MAX_COUNT + 3].force += hj * de;
-        //AllHalfBonds[otherAtomIndex * HALF_BOND_MAX_COUNT + 3].force += hi * de;
-        //force      // TODO: proper derivatives of energy?
-    }
-
-    // Accumulate atomic forces
-    AllAtoms[thisAtomIndex].force += force;
-    //AllAtoms[otherAtomIndex].force -= force;
-}
-
 int DragAtomIndex;
 float3 DragTargetWorldPosition;
 
+groupshared float3 thisAtomForce_Change[32];
+groupshared float3 thisAtomHalfBond_Force_Change[32 * HALF_BOND_MAX_COUNT];
+groupshared float3 thisAtomHalfBond_Energy_Change[32 * HALF_BOND_MAX_COUNT];
 #pragma kernel Simulate_EvaluateForces
-[numthreads(128, 1, 1)]
-void Simulate_EvaluateForces(uint3 id : SV_DispatchThreadID)
+[numthreads(27, 1, 1)]
+void Simulate_EvaluateForces(
+    uint3 dispatchThreadID : SV_DispatchThreadID, 
+    uint3 groupId  : SV_GroupID,
+    uint3 groupThreadID : SV_GroupThreadID)
 {
-    uint thisAtomIndex = id.x;
+    uint thisAtomIndex = groupId.x;
+    uint cellLocalIndex = groupThreadID.x;
+   
+    thisAtomForce_Change[cellLocalIndex] = 0;
+    for (int halfBondIndex; halfBondIndex < HALF_BOND_MAX_COUNT; halfBondIndex++)
+    {
+        thisAtomHalfBond_Force_Change[cellLocalIndex * HALF_BOND_MAX_COUNT + halfBondIndex] = 0;
+        thisAtomHalfBond_Energy_Change[cellLocalIndex * HALF_BOND_MAX_COUNT + halfBondIndex] = 0;
+    }
+
+    GroupMemoryBarrierWithGroupSync();
+
+    //if (cellLocalIndex >= 27) return;
     float3 thisAtomPosition = AllAtoms[thisAtomIndex].position;
 
     // calculate relevant voxel cells hashcodes
-    uint hashcodes[27];
+    uint cellHashCode;
     {
         int i = 0;
         for (int x = -1; x <= 1; x++)
             for (int y = -1; y <= 1; y++)
                 for (int z = -1; z <= 1; z++)
                 {
-                    hashcodes[i] = GetHashCode(thisAtomPosition + float3(x,y,z) * AtomInteractionMaxRadius);
+                    if (cellLocalIndex == i)
+                        cellHashCode = GetHashCode(thisAtomPosition + float3(x,y,z) * AtomInteractionMaxRadius);
                     i++;
                 }
     }
 
-
     int countOfInteractingAtoms = 0;
-    for (int h = 0; h < 27; h++)
-    {
-        uint sortedAtomsStartIndex = HashCodeToSortedAtomIndexes[hashcodes[h] * 2 + 0];
-        uint sortedAtomsEndIndex = HashCodeToSortedAtomIndexes[hashcodes[h] * 2 + 1]; 
-        if (sortedAtomsEndIndex == -1 || sortedAtomsStartIndex == -1) continue;
 
+    uint sortedAtomsStartIndex = HashCodeToSortedAtomIndexes[cellHashCode * 2 + 0];
+    uint sortedAtomsEndIndex = HashCodeToSortedAtomIndexes[cellHashCode * 2 + 1]; 
+    
+    Atom thisAtom = AllAtoms[thisAtomIndex];
+    if (sortedAtomsEndIndex != -1 && sortedAtomsStartIndex != -1)
+    {   
         for (uint sortedAtomsIndex = sortedAtomsStartIndex;
             sortedAtomsIndex <= sortedAtomsEndIndex; 
             sortedAtomsIndex++)
@@ -526,17 +365,211 @@ void Simulate_EvaluateForces(uint3 id : SV_DispatchThreadID)
             uint otherAtomIndex = SortedAtomIndexes[sortedAtomsIndex].x;
             if (otherAtomIndex != thisAtomIndex)
             {
-                EvaluateForces(thisAtomIndex, otherAtomIndex, true);
-                //EvaluateForces(otherAtomIndex, thisAtomIndex, false);
+                Atom otherAtom = AllAtoms[otherAtomIndex];
+
+                // This is modified from RARFFarr
+                const float RcutMax = 5.0; // [A]
+                const float R2cut = RcutMax*RcutMax;
+                const float RcutCap = 3.0; // [A]
+                const float R2cutCap = RcutCap*RcutCap;
+                const bool bRepelCaps = true;
+                const bool bDonorAcceptorCap = false;
+                const float lcap       =   1.0;
+                const float aMorseCap  =   1.0;
+                const float bMorseCap  =  -0.7;
+                #define R2SAFE  1.0e-8f
+
+                // subtract atom positions, check if within cutoff
+                float3 dij = otherAtom.position - thisAtom.position;
+                float r2 = dot(dij, dij);
+                if (r2 > R2cut) continue; // cutoff
+                float rij = sqrt(r2);
+                float3 hij = dij*(1/rij);
+
+                // mixing rules for L-J interaction  https://en.wikipedia.org/wiki/Combining_rules
+                float combined_aMorse = thisAtom.aMorse * otherAtom.aMorse;
+                float combined_bMorse = thisAtom.bMorse + otherAtom.bMorse;
+                float combined_rbond0 = thisAtom.rbond0 + otherAtom.rbond0;
+                float combined_Epz = thisAtom.Epz;
+                
+                // Evaluate **radial** Potential and Force
+                // https://en.wikipedia.org/wiki/Morse_potential
+                // potential composed frowm two exponetials
+                // one is atractive decaying slowly, represeting electron which want to share two atoms (forming a bond)
+                // the other is repulsive, decaying fast, representing electron which want to avoid having overlap which other electrons which already are near the atomic nuclei 
+                // E  = a*( exp( -b*(r-r0) ) - 1 )^2
+                //float expr = exp( -type.bMorse*(rij - type.rbond0); // original version
+                float2 r  = finite_exp( rij - combined_rbond0, -combined_bMorse, RcutMax-combined_rbond0 );
+                float expr = r.x;
+                float dexpr = r.y;
+                float E     =    combined_aMorse*expr* expr; // repuslive part of interaction
+                float fr    =  2*combined_aMorse*expr*dexpr; // repulsive force
+                float Eb    = -2*combined_aMorse*      expr; // bonding energy (attractive part of interactions)
+                float frb   = -2*combined_aMorse*     dexpr; // bonding force
+                float3 force = hij*fr;
+
+                // =================== Evaluate angular part of potential (and force)
+
+                // matrix derivative cosine(hi,hj) = 1/|hi||hj| d/dhi (hi.hj
+                // in short - you give it direction, it gives you force
+                // Evaluate angular derivative matrix
+                float2x3 Dij = from_deriv(dij, 1/(rij*r2));
+
+                // Interactions between all pairs of bonds on that atom 
+                // all half-bonds on atom A
+                for (
+                    int thisAtomHalfBondIndex = thisAtomIndex * HALF_BOND_MAX_COUNT; 
+                    thisAtomHalfBondIndex < thisAtomIndex * HALF_BOND_MAX_COUNT + thisAtom.numUsedHalfBonds; 
+                    thisAtomHalfBondIndex++
+                ) 
+                {
+                    const float3 hi = AllHalfBonds[thisAtomHalfBondIndex].directionWorldSpace;
+                    float ci       = dot(hij, hi);   // ci = <hi|hij>
+
+                    // we have 3 cosines of 3 anges
+                    // ci  = cos(hi,hij)
+                    // cj  = cos(hj,hij)
+                    // cij = cos(hi,hj)
+                    // where:
+                    // hi ... direction of bond on atom i
+                    // hj ... direction of bond on atom j
+                    // hij ... direction of bond between atoms i and j (between centers of atoms)
+
+                    if (ci < 0)       // cannot bond if in oposite direction (other half plane)
+                        continue; 
+
+                    bool capi = AllHalfBonds[thisAtomHalfBondIndex].cap >= 0; // if bond is capped it does not bond any more
+
+                    // all half-bonds on atom B
+                    for (
+                        int otherAtomHalfBondIndex = otherAtomIndex * HALF_BOND_MAX_COUNT;
+                        otherAtomHalfBondIndex < otherAtomIndex * HALF_BOND_MAX_COUNT + otherAtom.numUsedHalfBonds;
+                        otherAtomHalfBondIndex++
+                    )
+                    {
+                        const float3 hj = AllHalfBonds[otherAtomHalfBondIndex].directionWorldSpace;
+                        // Interaction between capped (i.e. passivated) bonds - Only repulsive
+                        // if( bDonorAcceptorCap && capi && AllHalfBonds[otherAtomHalfBondIndex].cap>=0) continue;
+                        // // ---- repulsion of capping atoms on both bonds (i,j)
+                        // if( bRepelCaps && capi && AllHalfBonds[otherAtomHalfBondIndex].cap>=0)
+                        // {
+                        //     float3 pi = thisAtom.position + hi*lcap;
+                        //     float3 pj = otherAtom.position + hj*lcap;
+                        //     float3  dij   = pi-pj;
+                        //     float r2    = dot(dij, dij) + R2SAFE;
+                        //     if( r2<R2cutCap ){ 
+                        //         // Morse
+                        //         float rij   = sqrt( r2 );
+                        //         //float e     = aMorseCap * exp( bMorseCap*rij );
+                        //         //float3  f     = dij * (-bMorseCap * e / rij);
+                        //         //  ----- only the repulsive part of the Morse potential
+                        //         float2 r     = aMorseCap * finite_exp( rij, -bMorseCap, RcutCap );   
+                        //         float e = r.x;
+                        //         float frc = r.y;
+                        //         float3  f     = dij * (aMorseCap * frc / rij );     
+                        //         E+=e;
+                        //         force += f;
+                        //         f *= 1.0/lcap;
+                        //         if (saveToThis)
+                        //             AllHalfBonds[thisAtomHalfBondIndex].force += f;
+                        //         else
+                        //             AllHalfBonds[otherAtomHalfBondIndex].force -= f;
+                        //         continue;
+                        //     }
+                        // }
+
+                        // ---- Here starts the actual angular enery evaluation for pair of half-bonds
+                        // cosines of angles between the bonds
+                        float cj       = dot(hij, hj);  // cj  = <hj|hij>
+                        float cij      = dot(hi, hj);  // cij = <hj|hi>
+                        if(cj>0||cij>0) continue;   // check if bonds oriented toward each other
+
+                        // Angular potential     E =  (cos(ai)*cos(aj)*cos(aij)) ^ 4
+                        float cc  = ci*cj*cij;
+                        float cc2 = cc*cc;
+                        float e   = cc2*cc2;   // Angular Energy 
+                        float de  = 4*cc2*cc;  // Angular derivative
+
+                        // Total energy of bond is product of radial and angular part
+                        // this can be imaggined that atoms have to be ind proper distance (i.e. radial part)
+                        // but also that the half-bonds have to be properly oriented (depends of cosises ci,cj,cij)
+                        float eEb = e * Eb; // mutiply by radial bond energy
+                        thisAtomHalfBond_Energy_Change[cellLocalIndex * HALF_BOND_MAX_COUNT + thisAtomHalfBondIndex] += eEb*0.5;
+                        //AllHalfBonds[otherAtomHalfBondIndex].energy += eEb*0.5;
+                        E      += eEb;
+
+                        // Now we have to compute forces by derivative of total energy (eEb=e*Eb) 
+                        // with respect to all input variables (degrees-of-freedom) using chain derivative rule
+                        float deEb = de*Eb;
+                        float cicj = ci*cj;
+                        float cijcideEb = cij*ci*deEb; // temp variables for chain derivative rule to compute force from energy experssion
+                        float cijcjdeEb = cij*cj*deEb;
+                        float frbe = frb*e;
+                        thisAtomHalfBond_Force_Change[cellLocalIndex * HALF_BOND_MAX_COUNT + thisAtomHalfBondIndex] += hij * (-cijcjdeEb); 
+                        thisAtomHalfBond_Force_Change[cellLocalIndex * HALF_BOND_MAX_COUNT + thisAtomHalfBondIndex] += hj * (-cicj*deEb);        
+                        //AllHalfBonds[otherAtomHalfBondIndex].force += hij * (-cijcideEb); 
+                        //AllHalfBonds[otherAtomHalfBondIndex].force += hi * (-cicj*deEb);
+
+                        float3 hv;
+                        hv = dot_to(Dij, hi); 
+                        force += hv * (cijcjdeEb);
+                        hv = dot_to(Dij, hj); 
+                        force += hv * (cijcideEb);
+
+                        force += hij * (frb*e);
+                    }
+                }
+
+                // pi-pi interactions ( trying to align pi-orbitals in aromatic molecules, planarize them )
+                // for examplpe benzene molecule-molecule orbital
+                if (thisAtom.numUsedHalfBonds == 3 && otherAtom.numUsedHalfBonds == 3)
+                {
+                    // align pz-pz in sp2-sp2 pair
+                    const float3 hi = AllHalfBonds[thisAtomIndex * HALF_BOND_MAX_COUNT + 3].directionWorldSpace;
+                    const float3 hj = AllHalfBonds[otherAtomIndex * HALF_BOND_MAX_COUNT + 3].directionWorldSpace;
+                    float cdot = dot(hi, hj); // we try to make these to pi-orbitals collinear
+                    //float E = Epz * ( cdot*cdot ); // why I do no save energy ?
+                    float de = -2*cdot*combined_Epz*Eb;
+                    thisAtomHalfBond_Force_Change[cellLocalIndex * HALF_BOND_MAX_COUNT + 3] += hj * de;
+                    //AllHalfBonds[otherAtomIndex * HALF_BOND_MAX_COUNT + 3].force += hi * de;
+                    //force      // TODO: proper derivatives of energy?
+                }
+
+                // Accumulate atomic forces
+                thisAtomForce_Change[cellLocalIndex] += force;
+                //AllAtoms[otherAtomIndex].force -= force;
             }
         }
     }
+
+    GroupMemoryBarrierWithGroupSync();
+
+    if (groupThreadID.x != 0) return;
+
+    
+    for (int i = 0; i < 27; i++)
+    {
+        thisAtom.force += thisAtomForce_Change[i];
+    }
+    for (int halfBondIndex; halfBondIndex < HALF_BOND_MAX_COUNT; halfBondIndex++)
+    {
+        float3 force = 0;
+        float3 energy = 0;
+        for (int i = 0; i < 27; i++)
+        {
+            force += thisAtomHalfBond_Force_Change[i * HALF_BOND_MAX_COUNT + halfBondIndex];
+            energy += thisAtomHalfBond_Energy_Change[i * HALF_BOND_MAX_COUNT + halfBondIndex];
+        }
+        AllHalfBonds[thisAtomIndex * HALF_BOND_MAX_COUNT + halfBondIndex].force += force;
+        AllHalfBonds[thisAtomIndex * HALF_BOND_MAX_COUNT + halfBondIndex].energy += energy;
+    }
+
 
     if (thisAtomIndex == DragAtomIndex)
     {
         float3 direction = DragTargetWorldPosition - thisAtomPosition;
         float len = length(direction);
-        AllAtoms[thisAtomIndex].force += direction / len * clamp(0, 10, len * 10);             
+        thisAtom.force += direction / len * clamp(0, 10, len * 10);             
     }    
  
     for (int index = 0; index < BoundingPlanes_Length; index++)
@@ -545,12 +578,14 @@ void Simulate_EvaluateForces(uint3 id : SV_DispatchThreadID)
         float distanceToPlane = dot(thisAtomPosition.xyz, plane.xyz) + plane.w - AtomRadius;
         if (distanceToPlane < 0)
         {
-            AllAtoms[thisAtomIndex].force += plane.xyz * clamp(abs(distanceToPlane), 0, 1) * 100;
+            thisAtom.force += plane.xyz * clamp(abs(distanceToPlane), 0, 1) * 100;
             //thisAtomVelocity = reflect(thisAtomVelocity.xyz, plane.xyz) * 0.8f;
         }
     }
 
-    AllAtoms[thisAtomIndex].force += float3(0, 0, 0);
+    thisAtom.force += float3(0, 0, 0);
+
+    AllAtoms[thisAtomIndex] = thisAtom;
 }
 
 

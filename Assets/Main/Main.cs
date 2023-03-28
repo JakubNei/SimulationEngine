@@ -40,9 +40,9 @@ public class Main : MonoBehaviour
 	ComputeBuffer AllHalfBonds;
 
 	// index count per instance, instance count, start index location, base vertex location, start instance location
-	ComputeBuffer IndirectArguments_DrawAtoms;
+	ComputeBuffer InstancedIndirectDraw_Atoms;
 
-	ComputeBuffer IndirectArguments_DrawHalfBonds;
+	ComputeBuffer InstancedIndirectDraw_HalfBonds;
 	
 
 	// pairs of [index to in AllAtoms_Position, position hashcode], sorted by their position hashcode
@@ -92,6 +92,8 @@ public class Main : MonoBehaviour
 
 	uint? DraggingAtomIndex;
 	Vector3? DraggingAtomWorldPos;
+
+	ComputeBuffer DispatchIndirect_Simulate_EvaluateForces;
 
 	[StructLayout(LayoutKind.Sequential)]
 	public struct Atom
@@ -207,12 +209,15 @@ public class Main : MonoBehaviour
 			AllHalfBonds.SetData(allHalfBonds);
 		}
 
-		IndirectArguments_DrawAtoms = new ComputeBuffer(5, sizeof(int), ComputeBufferType.IndirectArguments);
-		IndirectArguments_DrawAtoms.SetData(new uint[] { ConfigAtomMesh.GetIndexCount(0), (uint)AllAtoms_Length, ConfigAtomMesh.GetIndexStart(0), ConfigAtomMesh.GetBaseVertex(0), 0 });
+		InstancedIndirectDraw_Atoms = new ComputeBuffer(5, sizeof(uint), ComputeBufferType.IndirectArguments);
+		InstancedIndirectDraw_Atoms.SetData(new uint[] { ConfigAtomMesh.GetIndexCount(0), (uint)AllAtoms_Length, ConfigAtomMesh.GetIndexStart(0), ConfigAtomMesh.GetBaseVertex(0), 0 });
 
-		IndirectArguments_DrawHalfBonds = new ComputeBuffer(5, sizeof(int), ComputeBufferType.IndirectArguments);
-		IndirectArguments_DrawHalfBonds.SetData(new uint[] { ConfigHalfBondMesh.GetIndexCount(0), (uint)AllHalfBonds_Length, ConfigHalfBondMesh.GetIndexStart(0), ConfigHalfBondMesh.GetBaseVertex(0), 0 });
-		
+		InstancedIndirectDraw_HalfBonds = new ComputeBuffer(5, sizeof(uint), ComputeBufferType.IndirectArguments);
+		InstancedIndirectDraw_HalfBonds.SetData(new uint[] { ConfigHalfBondMesh.GetIndexCount(0), (uint)AllHalfBonds_Length, ConfigHalfBondMesh.GetIndexStart(0), ConfigHalfBondMesh.GetBaseVertex(0), 0 });
+
+		DispatchIndirect_Simulate_EvaluateForces = new ComputeBuffer(3, sizeof(uint), ComputeBufferType.IndirectArguments);
+		DispatchIndirect_Simulate_EvaluateForces.SetData(new uint[] { (uint)AllAtoms_Length, 1, 1 });
+
 		emptyHitResult.Clear();
 		for (int i = 0; i < 4; i++)
 			emptyHitResult.Add(0);
@@ -228,8 +233,10 @@ public class Main : MonoBehaviour
 		AllAtoms = null;
 		AllHalfBonds?.Dispose();
 		AllHalfBonds = null;
-		IndirectArguments_DrawAtoms?.Dispose();
-		IndirectArguments_DrawAtoms = null;
+		InstancedIndirectDraw_Atoms?.Dispose();
+		InstancedIndirectDraw_Atoms = null;
+		DispatchIndirect_Simulate_EvaluateForces?.Dispose();
+		DispatchIndirect_Simulate_EvaluateForces = null;
 		SortedAtomIndexes?.Dispose();
 		SortedAtomIndexes = null;
 		HashCodeToSortedAtomIndexes?.Dispose();
@@ -495,7 +502,7 @@ public class Main : MonoBehaviour
 				ConfigComputeShader.SetInt("HashCodeToSortedAtomIndexes_Length", HashCodeToSortedAtomIndexes_Length);
 				ConfigComputeShader.SetBuffer(simulate, "SortedAtomIndexes", SortedAtomIndexes);
 				ConfigComputeShader.SetBool("ClampTo2D", ShouldClampAtomsToXyPlane);
-				ConfigComputeShader.Dispatch(simulate, AllAtoms_Length / 128, 1, 1);
+				ConfigComputeShader.DispatchIndirect(simulate, DispatchIndirect_Simulate_EvaluateForces);
 			}
 
 			{
@@ -536,16 +543,16 @@ public class Main : MonoBehaviour
 		if (ShouldDrawStandartLit)
 		{
 			SetDrawMaterialParams(ConfigAtomsMaterialStandartLit);
-			Graphics.DrawMeshInstancedIndirect(ConfigAtomMesh, 0, ConfigAtomsMaterialStandartLit, bounds, IndirectArguments_DrawAtoms, 0, null, ShadowCastingMode.On, true, 0, null, LightProbeUsage.BlendProbes);
+			Graphics.DrawMeshInstancedIndirect(ConfigAtomMesh, 0, ConfigAtomsMaterialStandartLit, bounds, InstancedIndirectDraw_Atoms, 0, null, ShadowCastingMode.On, true, 0, null, LightProbeUsage.BlendProbes);
 			SetDrawMaterialParams(ConfigHalfBondMaterialStandartLit);
-			Graphics.DrawMeshInstancedIndirect(ConfigHalfBondMesh, 0, ConfigHalfBondMaterialStandartLit, bounds, IndirectArguments_DrawHalfBonds, 0, null, ShadowCastingMode.On, true, 0, null, LightProbeUsage.BlendProbes);
+			Graphics.DrawMeshInstancedIndirect(ConfigHalfBondMesh, 0, ConfigHalfBondMaterialStandartLit, bounds, InstancedIndirectDraw_HalfBonds, 0, null, ShadowCastingMode.On, true, 0, null, LightProbeUsage.BlendProbes);
 		}
 		else
 		{
 			SetDrawMaterialParams(ConfigAtomsMaterialSimple);
-			Graphics.DrawMeshInstancedIndirect(ConfigAtomMesh, 0, ConfigAtomsMaterialSimple, bounds, IndirectArguments_DrawAtoms, 0, null, ShadowCastingMode.Off, false, 0, null, LightProbeUsage.Off);
+			Graphics.DrawMeshInstancedIndirect(ConfigAtomMesh, 0, ConfigAtomsMaterialSimple, bounds, InstancedIndirectDraw_Atoms, 0, null, ShadowCastingMode.Off, false, 0, null, LightProbeUsage.Off);
 			SetDrawMaterialParams(ConfigHalfBondMaterialSimple);
-			Graphics.DrawMeshInstancedIndirect(ConfigHalfBondMesh, 0, ConfigHalfBondMaterialSimple, bounds, IndirectArguments_DrawHalfBonds, 0, null, ShadowCastingMode.Off, false, 0, null, LightProbeUsage.Off);
+			Graphics.DrawMeshInstancedIndirect(ConfigHalfBondMesh, 0, ConfigHalfBondMaterialSimple, bounds, InstancedIndirectDraw_HalfBonds, 0, null, ShadowCastingMode.Off, false, 0, null, LightProbeUsage.Off);
 		}
 	}
 

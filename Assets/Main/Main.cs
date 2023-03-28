@@ -72,6 +72,7 @@ public class Main : MonoBehaviour
 	public bool ShouldUseBitonicSortGroupSharedMemory = true;
 	public bool ShouldAllowPlayerAtomDrag = true;
 	public bool ShouldRunSimulation = true;
+	public bool Run_Simulate_EvaluateForces = true;
 
 
 	struct CursorHitResult
@@ -268,7 +269,7 @@ public class Main : MonoBehaviour
 		ShouldUseBitonicSortGroupSharedMemory = GUILayout.Toggle(ShouldUseBitonicSortGroupSharedMemory, "use bitonic sort group shared memory");
 		ShouldRunSimulation = GUILayout.Toggle(ShouldRunSimulation, "run atom velocity and position update");
 		ShouldClampAtomsToXyPlane = GUILayout.Toggle(ShouldClampAtomsToXyPlane, "clamp atoms to xy plane");
-
+		Run_Simulate_EvaluateForces = GUILayout.Toggle(Run_Simulate_EvaluateForces, nameof(Run_Simulate_EvaluateForces));
 	}
 
 	// Update is called once per frame
@@ -295,7 +296,7 @@ public class Main : MonoBehaviour
 					BoundingPlanes_NormalDistance.Release();
 				BoundingPlanes_NormalDistance = new ComputeBuffer(BoundingPlanes_Length, Marshal.SizeOf(typeof(float)) * 4, ComputeBufferType.Structured);
 			}
-			BoundingPlanes_NormalDistance.SetData(boundingPlanes);
+			//BoundingPlanes_NormalDistance.SetData(boundingPlanes);
 		}
 
 		if (ShouldRunBitonicSort)
@@ -479,6 +480,7 @@ public class Main : MonoBehaviour
 				ConfigComputeShader.Dispatch(simulate, AllAtoms_Length / 128, 1, 1);
 			}
 
+			if (Run_Simulate_EvaluateForces)
 			{
 				var simulate = ConfigComputeShader.FindKernel("Simulate_EvaluateForces");
 				ConfigComputeShader.SetFloat("AtomRadius", atomRadius);

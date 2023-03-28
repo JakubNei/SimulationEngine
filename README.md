@@ -1,4 +1,5 @@
 
+![](.images/Screenshot 2023-03-28.png)
 ![](.images/Screenshot-2023-02-18.png)
 
 
@@ -6,16 +7,17 @@
 Unity 2021.3.18f1 LTS
 
 # Current state, how it works
--	[Bitonic sort][Bitonic sort Wikipedia] particle index array by hashcode of their position. Hashcode represents index of voxel cell where particle is. 
--	Build array that we can use to find a pair of `[index start, index end]` (to array built in above step) from voxel cell hashcode. [We can build this array by comparing hashcodes of pairs of particles and if they are different we found start and end][NVIDIA Particle Simulation using CUDA, 2010].
--	Update each particle velocity
-	-	Fetch particles from neighbouring 27 voxel cells using hashcode.
-	-	Calculate forces from those particles.
-	-	Update velocity.
--	Update each particle position.
--	Instanced draw all particles from positions buffer.
+-	[Bitonic sort][Bitonic sort Wikipedia] atom index array by hashcode of their position. Hashcode represents index of voxel cell where atom is. 
+-	Build array that we can use to find a pair of `[index start, index end]` (to array built in above step) from voxel cell hashcode. [We can build this array by comparing hashcodes of pairs of atoms and if they are different we found start and end][NVIDIA Particle Simulation using CUDA, 2010].
+-	Update each atom force using [Prokop Hapala's RARFF Solver]
+	-	Fetch atoms from neighbouring 27 voxel cells using hashcode.
+	-	Calculate forces.
+-	Update each atom velocity and position.
+-	Instanced draw everything.
+	-	All atoms
+	-	All half bonds
 
-Each particle can collide with all other particles, but we leverage the limited interaction radius of particles (the voxel cell edge length corresponds to the maximum interaction radius). So after bitonic sort and hascode, the complexity is only $O(nlog_2(n))$ instead of $O(n^2)$
+Each atom can collide with all other atoms, but we leverage the limited interaction radius of atoms (the voxel cell edge length corresponds to the maximum interaction radius). So after bitonic sort and hascode, the complexity is only $O(nlog_2(n))$ instead of $O(n^2)$
 
 # Relevant algorithms/concepts
 ## Building the Grid using Sorting 
@@ -23,7 +25,26 @@ Each particle can collide with all other particles, but we leverage the limited 
 > An alternative approach which does not require atomic operations is to use sorting. The algorithm consists of several kernels. The first kernel “calcHash” calculates a hash value for each particle based on its cell id. In this example we simply use the linear cell id as the hash, but it may be beneficial to use other functions such the Z-order curve [8] to improve the coherence of memory accesses. The kernel stores the results to the “particleHash” array in global memory as a uint2 pair (cell hash, particle id). We then sort the particles based on their hash values. The sorting is performed using the fast radix sort provided by the CUDPP library, which uses the algorithm described in [12]. This creates a list of particle ids in cell order. In order for this sorted list to useful, we need to be able to find the start of any given cell in the sorted list. This is achieved by running another kernel “findCellStart”, which uses a thread per particle and compares the cell index of the current particle with the cell index of the previous particle in the sorted list. If the index is different, this indicates the start of a new cell, and the start address is written to another array using a scattered write. The current code also finds the index of the end of each cell in a similar way.
 
 ## Bitonic sort
-Bitonic sort has $O(nlog_2(n))$ complexity in all cases.
+Bitonic sort has $O(nlog_2(n))$ complexity in all cases, it does not leverage cases where array is already close to sorted order, that is why radix sort might have better performance. Bitonic sort is however very simple to implement:
+```
+void BitonicSort(uint3 id : SV_DispatchThreadID)
+{
+    int index0 = id.x & ~ComparisonOffset; // index top
+	int index1 = id.x | ComparisonOffset; // index bottom
+    if (index1 == id.x) return;    
+    uint hashcode0 = SortedAtomIndexes[index0].y;
+    uint hashcode1 = SortedAtomIndexes[index1].y;
+    bool shouldSwap = (hashcode0 <= hashcode1) == (bool)(DirectionChangeStride & index0);
+    if (shouldSwap)
+    {
+        uint2 temp = SortedAtomIndexes[index0];
+        SortedAtomIndexes[index0] = SortedAtomIndexes[index1];
+        SortedAtomIndexes[index1] = temp;
+    }
+}
+```
+
+## Prokop Hapala's RARFF
 
 
 # What to try next
@@ -37,11 +58,14 @@ Can optimize using [Fast multipole method](https://en.wikipedia.org/wiki/Fast_mu
 
 # Optimizations To Do
 
+## Use sorting that improves preformance with almost sorted array
+Atoms are likely to stay in same cell over time.
+
 ## Auto tuning
 Find best block size
 https://forums.developer.nvidia.com/t/how-to-choose-how-many-threads-blocks-to-have/55529/6
 Find best hashcode implementation
-Find best hash code to particle index array size (probably bigger is better to reduce hashcode collisions) 
+Find best hash code to arom index array size (probably bigger is better to reduce hashcode collisions) 
 
 ## Other
 [Consider using OpenCL in Unity][Using OpenCL in Unity]
@@ -93,13 +117,13 @@ Find best hash code to particle index array size (probably bigger is better to r
 
 [Using OpenCL in Unity]:https://forum.unity.com/threads/opencl-from-unity.720719/
 
-[Prokop Hapala RARFF Solver]
+[Prokop Hapala's RARFF Solver]
 
-[Prokop Hapala RARFF Solver]:https://github.com/ProkopHapala/SimpleSimulationEngine/blob/master/cpp/common/molecular/RARFF_SR.h
+[Prokop Hapala's RARFF Solver]:https://github.com/ProkopHapala/SimpleSimulationEngine/blob/master/cpp/common/molecular/RARFF_SR.h
 
-[Prokop Hapala RARFF Solver Test]
+[Prokop Hapala's RARFF Solver Test]
 
-[Prokop Hapala RARFF Solver Test]:https://github.com/ProkopHapala/SimpleSimulationEngine/blob/master/cpp/sketches_SDL/Molecular/test_RARFF_SR.cpp
+[Prokop Hapala's RARFF Solver Test]:https://github.com/ProkopHapala/SimpleSimulationEngine/blob/master/cpp/sketches_SDL/Molecular/test_RARFF_SR.cpp
 
 [GPU Radix Sort]
 

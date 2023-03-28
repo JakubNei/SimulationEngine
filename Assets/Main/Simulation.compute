@@ -314,12 +314,7 @@ void EvaluateForces(int thisAtomIndex, int otherAtomIndex, bool saveToThis)
     Atom thisAtom = AllAtoms[thisAtomIndex];
     Atom otherAtom = AllAtoms[otherAtomIndex];
 
-    // mixing rules for L-J interaction  https://en.wikipedia.org/wiki/Combining_rules
-    float combined_aMorse = thisAtom.aMorse * otherAtom.aMorse;
-    float combined_bMorse = thisAtom.bMorse + otherAtom.bMorse;
-    float combined_rbond0 = thisAtom.rbond0 + otherAtom.rbond0;
-    float combined_Epz = thisAtom.Epz;
-    
+
     // This is modified from RARFFarr
     const float RcutMax = 5.0; // [A]
     const float R2cut = RcutMax*RcutMax;
@@ -338,7 +333,13 @@ void EvaluateForces(int thisAtomIndex, int otherAtomIndex, bool saveToThis)
     if (r2 > R2cut) return; // cutoff
     float rij = sqrt(r2);
     float3 hij = dij*(1/rij);
-
+    
+    // mixing rules for L-J interaction  https://en.wikipedia.org/wiki/Combining_rules
+    float combined_aMorse = thisAtom.aMorse * otherAtom.aMorse;
+    float combined_bMorse = thisAtom.bMorse + otherAtom.bMorse;
+    float combined_rbond0 = thisAtom.rbond0 + otherAtom.rbond0;
+    float combined_Epz = thisAtom.Epz;
+    
     // Evaluate **radial** Potential and Force
     // https://en.wikipedia.org/wiki/Morse_potential
     // potential composed frowm two exponetials
@@ -441,10 +442,8 @@ void EvaluateForces(int thisAtomIndex, int otherAtomIndex, bool saveToThis)
             // this can be imaggined that atoms have to be ind proper distance (i.e. radial part)
             // but also that the half-bonds have to be properly oriented (depends of cosises ci,cj,cij)
             float eEb = e * Eb; // mutiply by radial bond energy
-            if (saveToThis)
-                AllHalfBonds[thisAtomHalfBondIndex].energy += eEb*0.5;
-            else
-                AllHalfBonds[otherAtomHalfBondIndex].energy += eEb*0.5;
+            AllHalfBonds[thisAtomHalfBondIndex].energy += eEb*0.5;
+            //AllHalfBonds[otherAtomHalfBondIndex].energy += eEb*0.5;
             E      += eEb;
 
             // Now we have to compute forces by derivative of total energy (eEb=e*Eb) 
@@ -454,16 +453,10 @@ void EvaluateForces(int thisAtomIndex, int otherAtomIndex, bool saveToThis)
             float cijcideEb = cij*ci*deEb; // temp variables for chain derivative rule to compute force from energy experssion
             float cijcjdeEb = cij*cj*deEb;
             float frbe = frb*e;
-            if (saveToThis)
-            {
-                AllHalfBonds[thisAtomHalfBondIndex].force += hij * (-cijcjdeEb); 
-                AllHalfBonds[thisAtomHalfBondIndex].force += hj * (-cicj*deEb);
-            }
-            else
-            {
-                AllHalfBonds[otherAtomHalfBondIndex].force += hij * (-cijcideEb); 
-                AllHalfBonds[otherAtomHalfBondIndex].force += hi * (-cicj*deEb);
-            }
+            AllHalfBonds[thisAtomHalfBondIndex].force += hij * (-cijcjdeEb); 
+            AllHalfBonds[thisAtomHalfBondIndex].force += hj * (-cicj*deEb);        
+            //AllHalfBonds[otherAtomHalfBondIndex].force += hij * (-cijcideEb); 
+            //AllHalfBonds[otherAtomHalfBondIndex].force += hi * (-cicj*deEb);
 
             float3 hv;
             hv = dot_to(Dij, hi); 
@@ -485,18 +478,14 @@ void EvaluateForces(int thisAtomIndex, int otherAtomIndex, bool saveToThis)
         float cdot = dot(hi, hj); // we try to make these to pi-orbitals collinear
         //float E = Epz * ( cdot*cdot ); // why I do no save energy ?
         float de = -2*cdot*combined_Epz*Eb;
-        if (saveToThis)
-            AllHalfBonds[thisAtomIndex * HALF_BOND_MAX_COUNT + 3].force += hj * de;
-        else
-            AllHalfBonds[otherAtomIndex * HALF_BOND_MAX_COUNT + 3].force += hi * de;
+        AllHalfBonds[thisAtomIndex * HALF_BOND_MAX_COUNT + 3].force += hj * de;
+        //AllHalfBonds[otherAtomIndex * HALF_BOND_MAX_COUNT + 3].force += hi * de;
         //force      // TODO: proper derivatives of energy?
     }
 
     // Accumulate atomic forces
-    if (saveToThis)
-        AllAtoms[thisAtomIndex].force += force;
-    else
-        AllAtoms[otherAtomIndex].force -= force;
+    AllAtoms[thisAtomIndex].force += force;
+    //AllAtoms[otherAtomIndex].force -= force;
 }
 
 int DragAtomIndex;
@@ -560,6 +549,8 @@ void Simulate_EvaluateForces(uint3 id : SV_DispatchThreadID)
             //thisAtomVelocity = reflect(thisAtomVelocity.xyz, plane.xyz) * 0.8f;
         }
     }
+
+    AllAtoms[thisAtomIndex].force += float3(0, 0, 0);
 }
 
 
@@ -587,7 +578,7 @@ void Simulate_Move(uint3 id : SV_DispatchThreadID)
     if (ClampTo2D)
         clampTo2d = int3(1, 1, 0);
 
-    AllAtoms[atomIndex].velocity = (damp * AllAtoms[atomIndex].velocity * clampTo2d + DeltaTime * AllAtoms[atomIndex].force) * clampTo2d;
+    AllAtoms[atomIndex].velocity = (damp * AllAtoms[atomIndex].velocity + DeltaTime * AllAtoms[atomIndex].force) * clampTo2d;
     AllAtoms[atomIndex].omega = damp * AllAtoms[atomIndex].omega + (DeltaTime * invRotMass) * AllAtoms[atomIndex].torque;
     AllAtoms[atomIndex].position = (AllAtoms[atomIndex].position + AllAtoms[atomIndex].velocity * DeltaTime) * clampTo2d;
     AllAtoms[atomIndex].rotation = normalize(d_rot_exact(AllAtoms[atomIndex].rotation, DeltaTime, AllAtoms[atomIndex].omega));

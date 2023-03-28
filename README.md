@@ -7,15 +7,15 @@
 Unity 2021.3.18f1 LTS
 
 # Current state, how it works
--	[Bitonic sort][Bitonic sort Wikipedia] atom index array by hashcode of their position. Hashcode represents index of voxel cell where atom is. 
--	Build array that we can use to find a pair of `[index start, index end]` (to array built in above step) from voxel cell hashcode. [We can build this array by comparing hashcodes of pairs of atoms and if they are different we found start and end][NVIDIA Particle Simulation using CUDA, 2010].
--	Update each atom force using [Prokop Hapala's RARFF Solver]
-	-	Fetch atoms from neighbouring 27 voxel cells using hashcode.
-	-	Calculate forces.
--	Update each atom velocity and position.
--	Instanced draw everything.
-	-	All atoms
-	-	All half bonds
+- [Bitonic sort][Bitonic sort Wikipedia] atom index array by hashcode of their position. Hashcode represents index of voxel cell where atom is. 
+- Build array that we can use to find a pair of `[index start, index end]` (to array built in above step) from voxel cell hashcode. [We can build this array by comparing hashcodes of pairs of atoms and if they are different we found start and end][NVIDIA Particle Simulation using CUDA, 2010].
+- Update each atom force using [Prokop Hapala's RARFF Solver]
+	- Fetch atoms from neighbouring 27 voxel cells using hashcode.
+	- Calculate forces.
+- Update each atom velocity and position.
+- Instanced draw everything.
+	- All atoms
+	- All half bonds
 
 Each atom can collide with all other atoms, but we leverage the limited interaction radius of atoms (the voxel cell edge length corresponds to the maximum interaction radius). So after bitonic sort and hascode, the complexity is only $O(nlog_2(n))$ instead of $O(n^2)$
 
@@ -56,18 +56,28 @@ void BitonicSort(uint3 id : SV_DispatchThreadID)
 
 Can optimize using [Fast multipole method](https://en.wikipedia.org/wiki/Fast_multipole_method)
 
-# Optimizations To Do
+# Optimizations
 
-## Use sorting that improves preformance with almost sorted array
+## What helped
+- Major
+  - For N x N body simulation
+      - Limitng max interaction radius, which allows us to sort particle by cell hashcode, where cell size is max interaction radius, then we can check interactions only with neighbouring 27 cells [NVIDIA Particle Simulation using CUDA, 2010]
+      - Increasing max hashcode, which decreased hashcode collisions
+  - Switching to Vulkan from OpenGLCore on Linux increased Compute Shader performance
+- Noticable
+    - In Bitonic Sort Using additional kernel that uses shared memory when we compare keys with small offset [Bitonic sort example Unity compute shader]
+
+## To try
+### Use sorting that improves preformance with almost sorted array
 Atoms are likely to stay in same cell over time.
 
-## Auto tuning
-Find best block size
+### Auto tuning
+- Find best block size
 https://forums.developer.nvidia.com/t/how-to-choose-how-many-threads-blocks-to-have/55529/6
-Find best hashcode implementation
-Find best hash code to arom index array size (probably bigger is better to reduce hashcode collisions) 
+- Find best hashcode implementation
+- Find best hash code to arom index array size (probably bigger is better to reduce hashcode collisions) 
 
-## Other
+### Other
 [Consider using OpenCL in Unity][Using OpenCL in Unity]
 
 

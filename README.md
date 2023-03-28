@@ -63,6 +63,7 @@ Can optimize using [Fast multipole method](https://en.wikipedia.org/wiki/Fast_mu
   - For N x N body simulation
       - Limitng max interaction radius, which allows us to sort particle by cell hashcode, where cell size is max interaction radius, then we can check interactions only with neighbouring 27 cells [NVIDIA Particle Simulation using CUDA, 2010]
       - Increasing max hashcode, which decreased hashcode collisions
+      - Distribute neighbouring 27 cells calculations into individual compute shader threads, 36-39ms vs 27ms, higher number of simpler kernels seems better
   - Switching to Vulkan from OpenGLCore on Linux increased Compute Shader performance
 - Noticable
     - In Bitonic Sort Using additional kernel that uses shared memory when we compare keys with small offset [Bitonic sort example Unity compute shader]

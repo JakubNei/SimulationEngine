@@ -456,12 +456,13 @@ MonoBehaviour:
   ConfigComputeShader: {fileID: 7200000, guid: e23a68e826e45e143bd59f862a9086ca, type: 3}
   ConfigBoundingPlanes: {fileID: 1747066716}
   ShouldDrawAtoms: 1
-  ShouldDrawStandartLit: 1
+  ShouldDrawStandartLit: 0
   ShouldClampAtomsToXyPlane: 1
   ShouldRunBitonicSort: 1
   ShouldUseBitonicSortGroupSharedMemory: 1
   ShouldAllowPlayerAtomDrag: 1
   ShouldRunSimulation: 1
+  Run_Simulate_EvaluateForces: 1
 --- !u!4 &1402528688
 Transform:
   m_ObjectHideFlags: 0

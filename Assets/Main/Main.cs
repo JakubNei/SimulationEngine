@@ -31,8 +31,8 @@ public class Main : MonoBehaviour
 	GameObject ConfigBoundingPlanes;
 
 	//int AllAtoms_Length = 128 * 128 * 64; // 1 million
-	//int AllAtoms_Length = 1024 * 64; // 65k
-	int AllAtoms_Length = 2 * 64 * 64;
+	int AllAtoms_Length = 1024 * 64; // 65k
+	//int AllAtoms_Length = 2 * 64 * 64;
 
 	ComputeBuffer AllAtoms;
 
@@ -66,7 +66,7 @@ public class Main : MonoBehaviour
 	float AtomInteractionMaxRadius = interactionMaxRadius;
 
 	public bool ShouldDrawAtoms = true;
-	public bool ShouldDrawStandartLit = true;
+	public bool ShouldDrawStandartLit = false;
 	public bool ShouldClampAtomsToXyPlane = true;
 	public bool ShouldRunBitonicSort = true;
 	public bool ShouldUseBitonicSortGroupSharedMemory = true;

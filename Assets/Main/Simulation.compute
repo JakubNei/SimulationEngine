@@ -167,7 +167,7 @@ uint GetHashCode(float3 position)
 [numthreads(128, 1, 1)]
 void BitonicSort_Initialize(uint3 id : SV_DispatchThreadID)
 {
-    SortedAtomIndexes[id.x] = uint2(id.x, GetHashCode(AllAtoms[id.x].position.xyz));
+    SortedAtomIndexes[id.x] = uint2(id.x, GetHashCode(AllAtoms[id.x].position));
 }
 
 
@@ -344,8 +344,8 @@ void Simulate_Prepare(uint3 id : SV_DispatchThreadID)
         float3x3 localToWorldRotation = quaternion_to_matrix_3x3(AllAtoms[atomIndex].rotation);
         for (int halfBondIndex; halfBondIndex < HALF_BOND_MAX_COUNT; halfBondIndex++)
         {
-            AllHalfBonds[atomIndex * HALF_BOND_MAX_COUNT + halfBondIndex].directionWorldSpace.xyz =
-                mul(localToWorldRotation, AllHalfBonds[atomIndex * HALF_BOND_MAX_COUNT + halfBondIndex].directionLocalSpace.xyz);
+            AllHalfBonds[atomIndex * HALF_BOND_MAX_COUNT + halfBondIndex].directionWorldSpace =
+                mul(localToWorldRotation, AllHalfBonds[atomIndex * HALF_BOND_MAX_COUNT + halfBondIndex].directionLocalSpace);
         }
     }
 }
@@ -603,7 +603,7 @@ void Simulate_EvaluateForces(
             {
                 force += thisAtomForce_Change[i];
             }
-            thisAtom.force.xyz = force;
+            thisAtom.force = force;
         }
 
         for (int halfBondIndex; halfBondIndex < HALF_BOND_MAX_COUNT; halfBondIndex++)
@@ -615,8 +615,8 @@ void Simulate_EvaluateForces(
                 force += thisAtomHalfBond_Force_Change[i * HALF_BOND_MAX_COUNT + halfBondIndex];
                 energy += thisAtomHalfBond_Energy_Change[i * HALF_BOND_MAX_COUNT + halfBondIndex];
             }
-            AllHalfBonds[thisAtomIndex * HALF_BOND_MAX_COUNT + halfBondIndex].force.xyz += force;
-            AllHalfBonds[thisAtomIndex * HALF_BOND_MAX_COUNT + halfBondIndex].energy.xyz += energy;
+            AllHalfBonds[thisAtomIndex * HALF_BOND_MAX_COUNT + halfBondIndex].force += force;
+            AllHalfBonds[thisAtomIndex * HALF_BOND_MAX_COUNT + halfBondIndex].energy += energy;
         }
     }
 
@@ -624,20 +624,20 @@ void Simulate_EvaluateForces(
     {
         float3 direction = DragTargetWorldPosition - thisAtomPosition;
         float len = length(direction);
-        thisAtom.force.xyz += direction / len * clamp(0, 10, len * 10);             
+        thisAtom.force += direction / len * clamp(0, 10, len * 10);             
     }    
  
     for (int index = 0; index < BoundingPlanes_Length; index++)
     {
         float4 plane = BoundingPlanes_NormalDistance[index];
-        float distanceToPlane = dot(thisAtomPosition.xyz, plane.xyz) + plane.w - AtomRadius;
+        float distanceToPlane = dot(thisAtomPosition, plane) + plane.w - AtomRadius;
         if (distanceToPlane < 0)
         {
-            thisAtom.force.xyz += plane.xyz * clamp(abs(distanceToPlane), 0, 1) * 100;
+            thisAtom.force += plane * clamp(abs(distanceToPlane), 0, 1) * 100;
         }
     }
 
-    thisAtom.force.xyz += float3(0, 0, 0);
+    thisAtom.force += float3(0, 0, 0);
 
     AllAtoms[thisAtomIndex] = thisAtom;
 }
@@ -658,14 +658,14 @@ void Simulate_Move(uint3 id : SV_DispatchThreadID)
         float3 force = AllHalfBonds[atomIndex * HALF_BOND_MAX_COUNT + halfBondIndex].force;
         float3 direction = AllHalfBonds[atomIndex * HALF_BOND_MAX_COUNT + halfBondIndex].directionWorldSpace;
         force += direction * -dot(force, direction); // orthogonalize
-        AllAtoms[atomIndex].torque.xyz += cross(direction, force);
+        AllAtoms[atomIndex].torque += cross(direction, force);
     }
 
     const float invRotMass = 2.0;
 
-    int4 clampTo2d = 1;
+    int3 clampTo2d = 1;
     if (ClampTo2D)
-        clampTo2d = int4(1, 1, 0, 0);
+        clampTo2d = int3(1, 1, 0);
 
     AllAtoms[atomIndex].velocity = (damp * AllAtoms[atomIndex].velocity + DeltaTime * AllAtoms[atomIndex].force) * clampTo2d;
     AllAtoms[atomIndex].omega = damp * AllAtoms[atomIndex].omega + (DeltaTime * invRotMass) * AllAtoms[atomIndex].torque;

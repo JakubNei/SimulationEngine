@@ -61,7 +61,7 @@ public class Main : MonoBehaviour
 	ComputeBuffer BoundingPlanes_NormalDistance;
 
 	// maximum amount of voxel cells
-	int HashCodeToSortedAtomIndexes_Length = 128 * 16 * 1024;
+	int HashCodeToSortedAtomIndexes_Length = 128 * 4 * 1024;
 
 	// our scale space is in nanometers, atoms have an average radius of about 0.1 nm, so one Unity unit is one nanometer in this project
 	const float atomRadius = 0.1f; // 0.1f;
@@ -103,12 +103,12 @@ public class Main : MonoBehaviour
 	[StructLayout(LayoutKind.Sequential)]
 	public struct Atom
 	{
-		public Vector4 position;
+		public Vector3 position;
 		public Quaternion rotation;
-		public Vector4 force;
-		public Vector4 torque;
-		public Vector4 velocity;
-		public Vector4 omegas;
+		public Vector3 force;
+		public Vector3 torque;
+		public Vector3 velocity;
+		public Vector3 omegas;
 
 		public float Epz;
 		public float rbond0;
@@ -121,10 +121,10 @@ public class Main : MonoBehaviour
 	[StructLayout(LayoutKind.Sequential)]
 	public struct HalfBond
 	{
-		public Vector4 directionWorldSpace;
-		public Vector4 directionLocalSpace;
-		public Vector4 force;
-		public Vector4 energy;
+		public Vector3 directionWorldSpace;
+		public Vector3 directionLocalSpace;
+		public Vector3 force;
+		public Vector3 energy;
 		public int cap;
 	};
 

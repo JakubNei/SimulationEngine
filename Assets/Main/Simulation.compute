@@ -124,13 +124,40 @@ bool ClampTo2D;
 
 
 int HashCodeToSortedAtomIndexes_Length;
+bool UseZCurveHashCode;
 
 
+// https://www.shadertoy.com/view/4sscDn
+// https://www.forceflow.be/2013/10/07/morton-encodingdecoding-through-bit-interleaving-implementations/
+uint splitBy3(uint a)
+{
+    uint x = a & 0x1fffff; // we only look at the first 21 bits
+    //x = (x | x << 32) & 0x1f00000000ffff; // shift left 32 bits, OR with self, and 00011111000000000000000000000000000000001111111111111111
+    x = (x | (x << 16)) & 0xff0000ff; // shift left 32 bits, OR with self, and 00011111000000000000000011111111000000000000000011111111
+    x = (x | (x << 8)) & 0x0f00f00f; // shift left 32 bits, OR with self, and 0001000000001111000000001111000000001111000000001111000000000000
+    x = (x | (x << 4)) & 0xc30c30c3; // shift left 32 bits, OR with self, and 0001000011000011000011000011000011000011000011000011000100000000
+    x = (x | (x << 2)) & 0x49249249;
+    return x;
+}
 
-uint GetHashCode(float3 position)
+uint GetHashCode_ZCurve(float3 position)
+{
+    uint3 p = abs((int3)(position / AtomInteractionMaxRadius) + 128);
+    return (splitBy3(p.x) | (splitBy3(p.y) << 1) | (splitBy3(p.z) << 2)) % HashCodeToSortedAtomIndexes_Length;
+}
+
+uint GetHashCode_Simple(float3 position)
 {
     uint3 p = abs((int3)(position / AtomInteractionMaxRadius) + 128);
     return (p.x + (p.y << 8) + (p.z << 16)) % HashCodeToSortedAtomIndexes_Length;
+}
+
+uint GetHashCode(float3 position)
+{
+    if (UseZCurveHashCode)
+        return GetHashCode_ZCurve(position);
+    else
+        return GetHashCode_Simple(position);
 }
 
 
@@ -140,7 +167,7 @@ uint GetHashCode(float3 position)
 [numthreads(128, 1, 1)]
 void BitonicSort_Initialize(uint3 id : SV_DispatchThreadID)
 {
-    SortedAtomIndexes[id.x] = uint2(id.x, GetHashCode(AllAtoms[id.x].position));
+    SortedAtomIndexes[id.x] = uint2(id.x, GetHashCode(AllAtoms[id.x].position.xyz));
 }
 
 
@@ -220,7 +247,7 @@ void BitonicSort_ReorderData(uint3 dispatchThreadID : SV_DispatchThreadID)
 
 
 #pragma kernel HashCodeToSortedAtomIndexes_Initialize
-[numthreads(128, 1, 1)]
+[numthreads(1024, 1, 1)]
 void HashCodeToSortedAtomIndexes_Initialize(uint3 id : SV_DispatchThreadID)
 {  
     HashCodeToSortedAtomIndexes[id.x * 2 + 0] = -1;
@@ -317,8 +344,8 @@ void Simulate_Prepare(uint3 id : SV_DispatchThreadID)
         float3x3 localToWorldRotation = quaternion_to_matrix_3x3(AllAtoms[atomIndex].rotation);
         for (int halfBondIndex; halfBondIndex < HALF_BOND_MAX_COUNT; halfBondIndex++)
         {
-            AllHalfBonds[atomIndex * HALF_BOND_MAX_COUNT + halfBondIndex].directionWorldSpace =
-                mul(localToWorldRotation, AllHalfBonds[atomIndex * HALF_BOND_MAX_COUNT + halfBondIndex].directionLocalSpace);
+            AllHalfBonds[atomIndex * HALF_BOND_MAX_COUNT + halfBondIndex].directionWorldSpace.xyz =
+                mul(localToWorldRotation, AllHalfBonds[atomIndex * HALF_BOND_MAX_COUNT + halfBondIndex].directionLocalSpace.xyz);
         }
     }
 }
@@ -570,9 +597,13 @@ void Simulate_EvaluateForces(
     
     // sum reduce shared data
     {
-        for (int i = 0; i < 27; i++)
         {
-            thisAtom.force += thisAtomForce_Change[i];
+            float3 force = 0;
+            for (int i = 0; i < 27; i++)
+            {
+                force += thisAtomForce_Change[i];
+            }
+            thisAtom.force.xyz = force;
         }
 
         for (int halfBondIndex; halfBondIndex < HALF_BOND_MAX_COUNT; halfBondIndex++)
@@ -584,8 +615,8 @@ void Simulate_EvaluateForces(
                 force += thisAtomHalfBond_Force_Change[i * HALF_BOND_MAX_COUNT + halfBondIndex];
                 energy += thisAtomHalfBond_Energy_Change[i * HALF_BOND_MAX_COUNT + halfBondIndex];
             }
-            AllHalfBonds[thisAtomIndex * HALF_BOND_MAX_COUNT + halfBondIndex].force += force;
-            AllHalfBonds[thisAtomIndex * HALF_BOND_MAX_COUNT + halfBondIndex].energy += energy;
+            AllHalfBonds[thisAtomIndex * HALF_BOND_MAX_COUNT + halfBondIndex].force.xyz += force;
+            AllHalfBonds[thisAtomIndex * HALF_BOND_MAX_COUNT + halfBondIndex].energy.xyz += energy;
         }
     }
 
@@ -593,7 +624,7 @@ void Simulate_EvaluateForces(
     {
         float3 direction = DragTargetWorldPosition - thisAtomPosition;
         float len = length(direction);
-        thisAtom.force += direction / len * clamp(0, 10, len * 10);             
+        thisAtom.force.xyz += direction / len * clamp(0, 10, len * 10);             
     }    
  
     for (int index = 0; index < BoundingPlanes_Length; index++)
@@ -602,11 +633,11 @@ void Simulate_EvaluateForces(
         float distanceToPlane = dot(thisAtomPosition.xyz, plane.xyz) + plane.w - AtomRadius;
         if (distanceToPlane < 0)
         {
-            thisAtom.force += plane.xyz * clamp(abs(distanceToPlane), 0, 1) * 100;
+            thisAtom.force.xyz += plane.xyz * clamp(abs(distanceToPlane), 0, 1) * 100;
         }
     }
 
-    thisAtom.force += float3(0, 0, 0);
+    thisAtom.force.xyz += float3(0, 0, 0);
 
     AllAtoms[thisAtomIndex] = thisAtom;
 }
@@ -627,17 +658,17 @@ void Simulate_Move(uint3 id : SV_DispatchThreadID)
         float3 force = AllHalfBonds[atomIndex * HALF_BOND_MAX_COUNT + halfBondIndex].force;
         float3 direction = AllHalfBonds[atomIndex * HALF_BOND_MAX_COUNT + halfBondIndex].directionWorldSpace;
         force += direction * -dot(force, direction); // orthogonalize
-        AllAtoms[atomIndex].torque += cross(direction, force);
+        AllAtoms[atomIndex].torque.xyz += cross(direction, force);
     }
 
     const float invRotMass = 2.0;
 
-    int3 clampTo2d = 1;
+    int4 clampTo2d = 1;
     if (ClampTo2D)
-        clampTo2d = int3(1, 1, 0);
+        clampTo2d = int4(1, 1, 0, 0);
 
     AllAtoms[atomIndex].velocity = (damp * AllAtoms[atomIndex].velocity + DeltaTime * AllAtoms[atomIndex].force) * clampTo2d;
     AllAtoms[atomIndex].omega = damp * AllAtoms[atomIndex].omega + (DeltaTime * invRotMass) * AllAtoms[atomIndex].torque;
-    AllAtoms[atomIndex].position = (AllAtoms[atomIndex].position + AllAtoms[atomIndex].velocity * DeltaTime) * clampTo2d;
+    AllAtoms[atomIndex].position= (AllAtoms[atomIndex].position + AllAtoms[atomIndex].velocity * DeltaTime) * clampTo2d;
     AllAtoms[atomIndex].rotation = normalize(d_rot_exact(AllAtoms[atomIndex].rotation, DeltaTime, AllAtoms[atomIndex].omega));
 }

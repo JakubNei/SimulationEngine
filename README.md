@@ -26,7 +26,7 @@ Each atom can collide with all other atoms, but we leverage the limited interact
 
 ## Bitonic sort
 Bitonic sort has $O(nlog_2(n))$ complexity in all cases, it does not leverage cases where array is already close to sorted order, that is why radix sort might have better performance. Bitonic sort is however very simple to implement:
-```
+```hlsl
 void BitonicSort(uint3 id : SV_DispatchThreadID)
 {
     int index0 = id.x & ~ComparisonOffset; // index top
@@ -63,15 +63,17 @@ Can optimize using [Fast multipole method](https://en.wikipedia.org/wiki/Fast_mu
   - For N x N body simulation
       - Limitng max interaction radius, which allows us to sort particle by cell hashcode, where cell size is max interaction radius, then we can check interactions only with neighbouring 27 cells [NVIDIA Particle Simulation using CUDA, 2010]
       - Increasing max hashcode, which decreased hashcode collisions
-      - Distribute neighbouring 27 cells calculations into individual compute shader threads, 36-39ms vs 27ms, higher number of simpler kernels seems better
+      - Distributing neighbouring 27 cells calculations into individual compute shader threads, 36-39ms vs 27ms, higher number of simpler kernels seems better
+      - Decreasing hashcode collisions by increasing possible hashcode space
   - Switching to Vulkan from OpenGLCore on Linux increased Compute Shader performance
 - Noticable
-    - In Bitonic Sort Using additional kernel that uses shared memory when we compare keys with small offset [Bitonic sort example Unity compute shader]
+    - In Bitonic Sort using additional kernel that uses shared memory when we compare keys with small offset [Bitonic sort example Unity compute shader]
 
 ## What didnt help
-- Ordering actual data (not just indexes) according to hashcode didn't help. There was no performance improvemenet in interaction forces evaluation kernel. Only additional cost of the reordering kernel.
-  
+- Ordering actual data (not just indexes) according to hashcode didn't help. There was no performance improvemenet in interaction forces evaluation kernel, even thought in theory it should improve coherence of memory. Only additional cost of the reordering kernel. [NVIDIA Particle Simulation using CUDA, 2010] Maybe poorly implemented ? There seems to be some issue with it.
+- Hashing with Z Curve did not help maybe poorly implemented ?
 ## To try
+- Use Z Order curve for hashcode
 - Use sorting algorithm that improves preformance with almost sorted array. Atoms are likely to stay in same cell over time.
 - Auto tuning
   - Find best block size

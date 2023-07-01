@@ -73,8 +73,14 @@ Can optimize using [Fast multipole method](https://en.wikipedia.org/wiki/Fast_mu
 - Ordering actual data (not just indexes) according to hashcode didn't help. There was no performance improvemenet in interaction forces evaluation kernel, even thought in theory it should improve coherence of memory. Only additional cost of the reordering kernel. [NVIDIA Particle Simulation using CUDA, 2010] Maybe poorly implemented ? There seems to be some issue with it.
 - Hashing with Z Curve did not help maybe poorly implemented ?
 ## To try
+- Use two buffers, read, write, then swap, instead of using same one
+- Can try to use force right don't really need to save it
+- Come up with others ways to minimize global memory read and writes (packing data ?)
 - Use Z Order curve for hashcode
-- Use sorting algorithm that improves preformance with almost sorted array. Atoms are likely to stay in same cell over time.
+- Use sorting algorithm that has better preformance with almost sorted array. Atoms are likely to stay in same cell over time.
+- Use struct of arrays instead array of structs https://en.wikipedia.org/wiki/AoS_and_SoA https://softwareengineering.stackexchange.com/questions/246474/
+- Try data aligment, float3 might be more cache friendly than float4
+- First load data into local variables then use those instead of using the global array, might give more time to read data so shader does not wait for memory
 - Auto tuning
   - Find best block size
 https://forums.developer.nvidia.com/t/how-to-choose-how-many-threads-blocks-to-have/55529/6
@@ -140,3 +146,9 @@ https://forums.developer.nvidia.com/t/how-to-choose-how-many-threads-blocks-to-h
 [GPU Radix Sort]
 
 [GPU Radix Sort]:https://github.com/mark-poscablo/gpu-radix-sort
+
+## Other
+
+[18 - How to write a FLIP water / fluid simulation running in your browser]
+
+[18 - How to write a FLIP water / fluid simulation running in your browser]:https://www.youtube.com/watch?v=XmzBREkK8kY

@@ -416,7 +416,9 @@ void Simulate_EvaluateForces(
             {
                 Atom otherAtom = AllAtoms[otherAtomIndex];
 
-                // This is modified from RARFFarr
+                // What follows is modified RARFFarr from Prokop Hapala
+                // original source: https://github.com/ProkopHapala/SimpleSimulationEngine/blob/master/cpp/common/molecular/RARFF_SR.h
+
                 const float RcutMax = 5.0; // [A]
                 const float R2cut = RcutMax*RcutMax;
                 const float RcutCap = 3.0; // [A]

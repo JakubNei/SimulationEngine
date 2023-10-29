@@ -2,6 +2,7 @@
 ![](.images/Screenshot-2023-03-28.png)
 ![](.images/Screenshot-2023-02-18.png)
 
+Discontinued. My attempt at PhD with collaboration with one researcher friend. Ended due to not having time and motivation due to work. Learned things that became useful later.
 
 # System requirements
 Unity 2021.3.18f1 LTS
@@ -19,7 +20,7 @@ Unity 2021.3.18f1 LTS
 
 Each atom can collide with all other atoms, but we leverage the limited interaction radius of atoms (the voxel cell edge length corresponds to the maximum interaction radius). So after bitonic sort and hascode, the complexity is only $O(nlog_2(n))$ instead of $O(n^2)$
 
-# Relevant algorithms/concepts
+# Relevant most useful algorithms/concepts
 ## Building the Grid using Sorting 
 [NVIDIA Particle Simulation using CUDA, 2010]
 > An alternative approach which does not require atomic operations is to use sorting. The algorithm consists of several kernels. The first kernel “calcHash” calculates a hash value for each particle based on its cell id. In this example we simply use the linear cell id as the hash, but it may be beneficial to use other functions such the Z-order curve [8] to improve the coherence of memory accesses. The kernel stores the results to the “particleHash” array in global memory as a uint2 pair (cell hash, particle id). We then sort the particles based on their hash values. The sorting is performed using the fast radix sort provided by the CUDPP library, which uses the algorithm described in [12]. This creates a list of particle ids in cell order. In order for this sorted list to useful, we need to be able to find the start of any given cell in the sorted list. This is achieved by running another kernel “findCellStart”, which uses a thread per particle and compares the cell index of the current particle with the cell index of the previous particle in the sorted list. If the index is different, this indicates the start of a new cell, and the start address is written to another array using a scattered write. The current code also finds the index of the end of each cell in a similar way.
@@ -116,8 +117,6 @@ https://forums.developer.nvidia.com/t/how-to-choose-how-many-threads-blocks-to-h
 [A More Efficient Parallel Method For Neighbour Search Using CUDA, 2015]
 
 [A More Efficient Parallel Method For Neighbour Search Using CUDA, 2015]:http://diglib.eg.org/bitstream/handle/10.2312/vriphys20151339/101-109.pdf?fbclid=IwAR26EUM2MlLdBVF2R-NkF0bjqqJYFX8tfkGLBqNXHNTqLG3fWdj0-wn-FoU
-
-![](.images/octant_subdivsion_problem.png)
 
 ## Wikipedia
 
